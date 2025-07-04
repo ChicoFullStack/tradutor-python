@@ -19,29 +19,24 @@
         .app-container {
             display: grid;
             height: 100vh;
-            /* Em mobile, apenas a coluna principal é visível. Em ecrãs médios (md) para cima, o layout de 3 colunas é aplicado. */
-            grid-template-columns: 1fr;
-            /* md:grid-template-columns: 72px 1fr 240px; */ 
             grid-template-rows: 1fr;
         }
 
         .main-content {
             background-color: #2f3136; /* Cor do canal de texto/vídeo */
-            display: flex;
-            flex-direction: column;
+            display: grid;
+            grid-template-rows: 1fr auto; /* A área de vídeo ocupa o espaço disponível, e os controlos ocupam o espaço de que precisam. */
             height: 100vh;
-            /* Garante que o conteúdo principal ocupe toda a coluna em mobile */
-            grid-column: 1 / -1;
-            /* md:grid-column: auto; */
+            overflow: hidden; /* Previne barras de scroll indesejadas na página inteira. */
         }
 
         .video-container {
             display: grid;
+            /* Esta regra garante que as janelas de vídeo se ajustam automaticamente para caberem todas. */
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 1rem;
-            flex-grow: 1;
             padding: 1rem;
-            overflow-y: auto;
+            overflow-y: auto; /* Adiciona uma barra de scroll apenas à área de vídeo se necessário. */
         }
         
         .video-wrapper {
@@ -72,19 +67,16 @@
         .control-panel {
             background-color: #2f3136;
             padding: 1rem;
-            flex-shrink: 0; /* Impede que o painel de controlo encolha */
         }
 
         .chat-box {
             background-color: #40444b; /* Cor da caixa de texto do Discord */
             border: none;
-            /* Altura ajustada para melhor visualização em mobile */
-            height: 90px; 
-            flex-shrink: 0; /* Impede que a caixa de chat encolha */
+            height: 90px;
         }
 
         .btn {
-            transition: background-color 0.3s;
+            transition: background-color: 0.3s;
         }
         .btn-mic-on { background-color: #3ba55d; }
         .btn-mic-off { background-color: #ed4245; }
@@ -94,14 +86,15 @@
 </head>
 <body>
 
-    <div class="app-container">
+    <!-- CORREÇÃO: As classes responsivas foram movidas do CSS para o HTML -->
+    <div class="app-container grid-cols-1 md:grid-cols-[72px_1fr_240px]">
         <!-- Barra Lateral (simulada) -->
-        <aside class="hidden md:flex sidebar p-2 flex-col items-center space-y-2">
+        <aside class="hidden md:flex sidebar p-2 flex-col items-center space-y-2 bg-[#202225]">
             <div class="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">TV</div>
         </aside>
 
         <!-- Conteúdo Principal -->
-        <div class="main-content">
+        <div class="main-content col-span-full md:col-auto">
             <!-- Grelha de Vídeos -->
             <main id="video-grid" class="video-container">
             </main>
@@ -126,7 +119,7 @@
         </div>
 
         <!-- Lista de Usuários (simulada) -->
-        <aside class="hidden md:block user-list p-4">
+        <aside class="hidden md:block user-list p-4 bg-[#2f3136] border-l border-[#202225]">
             <h2 class="font-bold text-lg">Online</h2>
         </aside>
     </div>
@@ -154,7 +147,6 @@
 
         const synth = window.speechSynthesis;
         let availableVoices = [];
-        // CORREÇÃO: Flag para controlar o desbloqueio do áudio
         let isAudioUnlocked = false;
 
         function loadVoices() {
@@ -162,10 +154,8 @@
             console.log("Vozes disponíveis:", availableVoices);
         }
 
-        // CORREÇÃO: Função para desbloquear a síntese de voz. Será chamada por uma ação direta do utilizador.
         function unlockAudio() {
             if (isAudioUnlocked) return;
-            // Toca um som vazio para ativar o contexto de áudio
             const silentUtterance = new SpeechSynthesisUtterance("");
             synth.speak(silentUtterance);
             isAudioUnlocked = true;
@@ -193,7 +183,6 @@
         }
 
         function setupUI() {
-            // CORREÇÃO: Adiciona a chamada para desbloquear o áudio nos botões
             toggleMicBtn.addEventListener('click', () => {
                 unlockAudio();
                 toggleMic();
@@ -352,24 +341,25 @@
             chatBox.appendChild(messageEl);
             chatBox.scrollTop = chatBox.scrollHeight;
 
-            if (data.user_id !== myUserId) {
-                // CORREÇÃO: Cancela a fala anterior para evitar sobreposição
-                synth.cancel(); 
-                
-                const utterance = new SpeechSynthesisUtterance(data.translated);
-                const targetLang = destLangSelect.value;
-                
-                const selectedVoice = availableVoices.find(voice => voice.lang === targetLang);
-
-                if (selectedVoice) {
-                    utterance.voice = selectedVoice;
-                } else {
-                    utterance.lang = targetLang;
-                    console.warn(`Nenhuma voz encontrada para ${targetLang}. Usando a voz padrão.`);
-                }
-                
-                synth.speak(utterance);
+            if (data.user_id === myUserId) {
+                return; 
             }
+            
+            synth.cancel(); 
+            
+            const utterance = new SpeechSynthesisUtterance(data.translated);
+            const targetLang = destLangSelect.value;
+            
+            const selectedVoice = availableVoices.find(voice => voice.lang === targetLang);
+
+            if (selectedVoice) {
+                utterance.voice = selectedVoice;
+            } else {
+                utterance.lang = targetLang;
+                console.warn(`Nenhuma voz encontrada para ${targetLang}. Usando a voz padrão.`);
+            }
+            
+            synth.speak(utterance);
         }
 
         function populateLanguageSelects() {
