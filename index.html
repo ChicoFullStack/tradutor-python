@@ -40,8 +40,8 @@
         }
         /* Estilos para os ícones/miniaturas */
         .thumbnail {
-            width: 140px;
-            height: 78px;
+            width: 100%; /* A largura será controlada pelo contentor pai */
+            aspect-ratio: 16 / 9;
             border: 2px solid transparent;
         }
         .thumbnail .participant-name {
@@ -196,22 +196,21 @@
                     const screenTrack = screenStream.getVideoTracks()[0];
                     
                     // Mudar layout para o modo de partilha
-                    videoGrid.className = 'flex-grow flex items-center justify-center p-4'; // Mantém flex-grow e centraliza o ecrã
+                    videoGrid.className = 'flex-grow flex flex-row p-4 gap-4';
                     
                     const thumbnailBar = document.createElement('div');
                     thumbnailBar.id = 'thumbnail-bar';
-                    thumbnailBar.className = 'fixed bottom-24 left-1/2 -translate-x-1/2 z-10 flex gap-3 p-2 bg-gray-900/70 backdrop-blur-sm rounded-full';
-                    document.body.appendChild(thumbnailBar);
-
+                    thumbnailBar.className = 'w-1/4 flex-shrink-0 flex flex-col gap-4 overflow-y-auto';
+                    
                     // Mover outros participantes para a barra de miniaturas
                     document.querySelectorAll('.video-player-container:not(#container-local)').forEach(container => {
                         container.classList.add('thumbnail');
                         thumbnailBar.appendChild(container);
                     });
 
-                    // Fazer o ecrã partilhado ocupar o espaço principal e definir o tamanho
-                    videoGrid.appendChild(localContainer);
-                    localContainer.classList.add('w-3/5'); // Define a largura para 60%
+                    // Adicionar a barra de miniaturas à grelha principal
+                    videoGrid.appendChild(thumbnailBar);
+                    localContainer.classList.add('flex-grow'); // Fazer o ecrã partilhado crescer
                     
                     for (const peerId in peers) {
                         const sender = peers[peerId].getSenders().find(s => s.track && s.track.kind === 'video');
@@ -241,8 +240,7 @@
                     thumbnailBar.remove();
                 }
                 videoGrid.className = 'flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto';
-                videoGrid.insertBefore(localContainer, videoGrid.firstChild);
-                localContainer.classList.remove('w-3/5'); // Remove a classe de tamanho
+                localContainer.classList.remove('flex-grow');
 
                 for (const peerId in peers) {
                     const sender = peers[peerId].getSenders().find(s => s.track && s.track.kind === 'video');
