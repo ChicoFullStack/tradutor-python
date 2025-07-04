@@ -1,329 +1,217 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Videochamada Web com Tradução</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📺</text></svg>">
+    <title>Plataforma de Videoconferência com Servidor Python</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
     <style>
         body {
-            background-color: #36393f;
-            color: #dcddde;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
         }
-        .main-content {
-            background-color: #2f3136;
-            display: grid;
-            grid-template-rows: 1fr auto;
-            height: 100vh;
-            overflow: hidden;
+        body::-webkit-scrollbar {
+            display: none;
         }
-        .video-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1rem;
-            padding: 1rem;
-            overflow-y: auto;
-        }
-        .video-wrapper {
-            background-color: #202225;
+        .video-player-container {
+            position: relative;
+            aspect-ratio: 16 / 9;
+            background-color: #2d3748; /* gray-800 */
             border-radius: 0.5rem;
             overflow: hidden;
             display: flex;
-            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
-        video {
+        .video-player {
             width: 100%;
-            height: auto;
-            transform: scaleX(-1);
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Espelha o vídeo local */
         }
         .remote-video {
-             transform: scaleX(1);
+            transform: scaleX(1); /* Não espelha vídeos remotos */
         }
-        .video-wrapper p {
-            padding: 0.5rem;
-            background-color: rgba(0,0,0,0.3);
-            text-align: center;
-            font-weight: bold;
+        .participant-name {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 0.25rem 0.75rem;
+            border-top-right-radius: 0.5rem;
+            font-size: 0.875rem;
         }
-        .control-panel {
-            background-color: #2f3136;
-            padding: 1rem;
-        }
-        .chat-box {
-            background-color: #40444b;
-            border: none;
-            height: 90px;
-        }
-        .btn { transition: background-color 0.3s; }
-        .btn-mic-on { background-color: #3ba55d; }
-        .btn-mic-off { background-color: #ed4245; }
-        .btn-vid-on { background-color: #5865f2; }
-        .btn-vid-off { background-color: #ed4245; }
     </style>
 </head>
-<body>
-    <div class="main-content">
-        <main id="video-grid" class="video-container"></main>
-        <footer class="control-panel">
-            <div class="flex items-center justify-center mb-4">
-                <input id="share-link" type="text" class="bg-gray-700 text-white rounded-l p-2 w-full md:w-1/2" readonly>
-                <button id="copy-link-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold p-2 rounded-r">Copiar Link</button>
+<body class="bg-gray-900 text-white flex flex-col h-screen overflow-hidden">
+
+    <!-- Cabeçalho Superior -->
+    <header class="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-700">
+        <div class="flex items-center space-x-2">
+            <i class="fas fa-video text-blue-400 text-xl"></i>
+            <span class="text-lg font-semibold">ConnectSphere (Python Backend)</span>
+        </div>
+        <div class="text-center">
+            <h1 id="room-name" class="text-xl font-bold">Sala Principal</h1>
+        </div>
+        <div class="flex items-center space-x-6 text-gray-400">
+            <i class="fas fa-info-circle cursor-pointer hover:text-white transition-colors"></i>
+            <i class="fas fa-shield-alt cursor-pointer hover:text-white transition-colors"></i>
+        </div>
+    </header>
+
+    <!-- Grade de Vídeos dos Participantes -->
+    <main id="video-grid" class="flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto">
+        <!-- Vídeo local será adicionado aqui -->
+    </main>
+
+    <!-- Barra de Controles Inferior -->
+    <footer class="flex-shrink-0 p-4">
+        <div class="max-w-2xl mx-auto bg-gray-800/80 backdrop-blur-sm rounded-full flex items-center justify-between p-2 shadow-lg">
+            <div class="flex items-center space-x-2">
+                <button id="mic-btn" title="Desativar o som" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3">
+                    <i id="mic-on-icon" class="fas fa-microphone w-6 h-6"></i>
+                    <i id="mic-off-icon" class="fas fa-microphone-slash w-6 h-6 hidden"></i>
+                </button>
+                <button id="video-btn" title="Parar vídeo" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3">
+                    <i id="video-on-icon" class="fas fa-video w-6 h-6"></i>
+                    <i id="video-off-icon" class="fas fa-video-slash w-6 h-6 hidden"></i>
+                </button>
             </div>
-            <div id="chat-box" class="chat-box w-full p-2 mb-4 overflow-y-auto rounded-md">
-                <p class="text-gray-400">Bem-vindo! As traduções aparecerão aqui.</p>
-            </div>
-            <div class="flex flex-col md:flex-row items-center justify-between gap-4 md:gap-0">
-                <div class="flex items-center space-x-4">
-                    <button id="toggle-mic" class="btn btn-mic-on text-white font-bold py-2 px-4 rounded">Microfone</button>
-                    <button id="toggle-video" class="btn btn-vid-on text-white font-bold py-2 px-4 rounded">Vídeo</button>
-                </div>
-                <div class="flex flex-col sm:flex-row items-center gap-2 sm:space-x-2">
-                    <label for="source-lang">Falar em:</label>
-                    <select id="source-lang" class="bg-gray-700 text-white rounded p-2"></select>
-                    <label for="dest-lang">Traduzir para:</label>
-                    <select id="dest-lang" class="bg-gray-700 text-white rounded p-2"></select>
-                </div>
-            </div>
-        </footer>
-    </div>
+            
+            <button id="leave-btn" title="Sair da chamada" class="bg-red-600 hover:bg-red-700 transition-colors rounded-full p-3 px-4">
+                <i class="fas fa-phone-slash w-6 h-6"></i>
+            </button>
+        </div>
+    </footer>
 
     <script>
-        const videoGrid = document.getElementById('video-grid');
-        const chatBox = document.getElementById('chat-box');
-        const toggleMicBtn = document.getElementById('toggle-mic');
-        const toggleVideoBtn = document.getElementById('toggle-video');
-        const sourceLangSelect = document.getElementById('source-lang');
-        const destLangSelect = document.getElementById('dest-lang');
-        const shareLinkInput = document.getElementById('share-link');
-        const copyLinkBtn = document.getElementById('copy-link-btn');
+        let pc = null; // PeerConnection
+        let localStream = null;
 
-        let localStream;
-        const myUserId = 'user-' + Math.random().toString(36).substr(2, 9);
-        let peerConnections = {};
-        
-        // CORREÇÃO: Extrai o ID da sala a partir do URL
-        const roomId = window.location.pathname.split('/')[2];
-        shareLinkInput.value = window.location.href;
+        // Função para iniciar a conexão
+        async function start() {
+            pc = new RTCPeerConnection();
 
-        const wsProtocol = 'wss:';
-        const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
+            // Manipulador para quando tracks remotas são recebidas
+            pc.ontrack = (event) => {
+                const stream = event.streams[0];
+                if (stream) {
+                    createPlayerContainer(stream.id, stream, `Remoto ${stream.id.substring(0, 6)}`);
+                }
+            };
 
-        const iceServers = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] };
-        const synth = window.speechSynthesis;
-        let availableVoices = [];
-        let isAudioUnlocked = false;
-
-        function loadVoices() {
-            availableVoices = synth.getVoices();
-        }
-
-        function unlockAudio() {
-            if (isAudioUnlocked) return;
-            synth.speak(new SpeechSynthesisUtterance(""));
-            isAudioUnlocked = true;
-        }
-
-        async function init() {
+            // Pede acesso à câmera e microfone do usuário
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                addVideoStream(myUserId, localStream, true);
-                setupUI();
-                setupWebSocket();
-                setupSpeechRecognition();
-                loadVoices();
-                if (synth.onvoiceschanged !== undefined) {
-                    synth.onvoiceschanged = loadVoices;
-                }
+                localStream.getTracks().forEach((track) => {
+                    pc.addTrack(track, localStream);
+                });
+                // Exibe o vídeo local
+                createPlayerContainer('local', localStream, 'Você');
             } catch (e) {
-                console.error('Erro ao aceder à mídia:', e);
-                alert('Não foi possível aceder à câmara e ao microfone.');
+                alert("Não foi possível obter acesso à câmera e microfone: " + e.name);
+                return;
             }
-        }
 
-        function setupUI() {
-            toggleMicBtn.addEventListener('click', () => { unlockAudio(); toggleMic(); });
-            toggleVideoBtn.addEventListener('click', () => { unlockAudio(); toggleVideo(); });
-            copyLinkBtn.addEventListener('click', () => {
-                shareLinkInput.select();
-                document.execCommand('copy');
-                copyLinkBtn.textContent = 'Copiado!';
-                setTimeout(() => { copyLinkBtn.textContent = 'Copiar Link'; }, 2000);
+            // Cria uma oferta SDP para iniciar a negociação
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+
+            // Envia a oferta para o servidor Python
+            const response = await fetch("/offer", {
+                body: JSON.stringify({
+                    sdp: pc.localDescription.sdp,
+                    type: pc.localDescription.type,
+                }),
+                headers: { "Content-Type": "application/json" },
+                method: "POST",
             });
-            populateLanguageSelects();
+
+            // Recebe a resposta do servidor e define a descrição remota
+            const answer = await response.json();
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
         }
 
-        function setupWebSocket() {
-            ws.onopen = () => {
-                console.log('Ligado ao servidor WebSocket');
-                // CORREÇÃO: Envia o ID da sala e do utilizador ao entrar
-                ws.send(JSON.stringify({ type: 'join', room_id: roomId, user_id: myUserId }));
-            };
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                handleSignalingData(data);
-            };
-            ws.onerror = (event) => {
-                console.error("Erro no WebSocket:", event);
+        // Função para criar o contêiner do vídeo na UI
+        function createPlayerContainer(id, stream, name) {
+            const videoGrid = document.getElementById('video-grid');
+            let container = document.getElementById(`container-${id}`);
+            if (container) {
+                return;
             }
+
+            container = document.createElement('div');
+            container.id = `container-${id}`;
+            container.className = 'video-player-container';
+            
+            const videoElement = document.createElement('video');
+            videoElement.srcObject = stream;
+            videoElement.autoplay = true;
+            videoElement.playsInline = true;
+            videoElement.muted = (id === 'local'); // Silencia o vídeo local para evitar eco
+            videoElement.className = `video-player ${id !== 'local' ? 'remote-video' : ''}`;
+            
+            const nameElement = document.createElement('div');
+            nameElement.className = 'participant-name';
+            nameElement.innerText = name;
+
+            container.appendChild(videoElement);
+            container.appendChild(nameElement);
+            videoGrid.appendChild(container);
         }
 
-        function handleSignalingData(data) {
-            switch (data.type) {
-                // CORREÇÃO: Quando um novo utilizador entra, o cliente existente inicia a ligação
-                case 'user-joined':
-                    console.log(`Novo utilizador ${data.user_id} entrou. A iniciar ligação...`);
-                    createPeerConnection(data.user_id, true);
-                    break;
-                case 'user-left':
-                    removeVideoStream(data.user_id);
-                    break;
-                case 'offer': handleOffer(data); break;
-                case 'answer': handleAnswer(data); break;
-                case 'candidate': handleCandidate(data); break;
-                case 'translation': displayTranslation(data); break;
+        // --- Lógica de Controles ---
+        function leaveCall() {
+            if (pc) {
+                pc.close();
+                pc = null;
             }
-        }
-
-        function createPeerConnection(targetId, isOfferor) {
-            if (targetId === myUserId) return;
-            console.log(`A criar PeerConnection para ${targetId}. Sou o iniciador: ${isOfferor}`);
-            peerConnections[targetId] = new RTCPeerConnection(iceServers);
-            localStream.getTracks().forEach(track => {
-                peerConnections[targetId].addTrack(track, localStream);
-            });
-            peerConnections[targetId].ontrack = event => {
-                addVideoStream(targetId, event.streams[0]);
-            };
-            peerConnections[targetId].onicecandidate = event => {
-                if (event.candidate) {
-                    ws.send(JSON.stringify({ type: 'candidate', candidate: event.candidate, user_id: myUserId, target_id: targetId }));
-                }
-            };
-            if (isOfferor) {
-                peerConnections[targetId].createOffer()
-                    .then(offer => peerConnections[targetId].setLocalDescription(offer))
-                    .then(() => {
-                        ws.send(JSON.stringify({ type: 'offer', offer: peerConnections[targetId].localDescription, user_id: myUserId, target_id: targetId }));
-                    });
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
             }
-        }
-        
-        async function handleOffer(data) {
-            const peerId = data.user_id;
-            console.log(`A receber oferta de ${peerId}`);
-            createPeerConnection(peerId, false); // Cria a conexão como não-iniciador
-            await peerConnections[peerId].setRemoteDescription(new RTCSessionDescription(data.offer));
-            const answer = await peerConnections[peerId].createAnswer();
-            await peerConnections[peerId].setLocalDescription(answer);
-            ws.send(JSON.stringify({ type: 'answer', answer: peerConnections[peerId].localDescription, user_id: myUserId, target_id: peerId }));
-        }
-
-        async function handleAnswer(data) {
-            console.log(`A receber resposta de ${data.user_id}`);
-            await peerConnections[data.user_id].setRemoteDescription(new RTCSessionDescription(data.answer));
-        }
-
-        async function handleCandidate(data) {
-            await peerConnections[data.user_id].addIceCandidate(new RTCIceCandidate(data.candidate));
-        }
-
-        function setupSpeechRecognition() {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SpeechRecognition) return;
-            const recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = false;
-            recognition.lang = sourceLangSelect.value;
-            recognition.onresult = (event) => {
-                const text = event.results[event.results.length - 1][0].transcript.trim();
-                if (text) {
-                    ws.send(JSON.stringify({ type: 'translate', text: text, user_id: myUserId, source_lang: sourceLangSelect.value, dest_lang: destLangSelect.value }));
-                }
-            };
-            recognition.onend = () => {
-                if (localStream.getAudioTracks()[0].enabled) {
-                    recognition.start();
-                }
-            };
-            recognition.start();
-            sourceLangSelect.onchange = () => { recognition.lang = sourceLangSelect.value; };
-        }
-
-        function addVideoStream(userId, stream, isLocal = false) {
-            if (document.getElementById('video-' + userId)) return;
-            const videoWrapper = document.createElement('div');
-            videoWrapper.id = 'video-' + userId;
-            videoWrapper.className = 'video-wrapper';
-            const video = document.createElement('video');
-            video.srcObject = stream;
-            video.autoplay = true;
-            video.playsInline = true;
-            video.muted = isLocal;
-            if (!isLocal) video.classList.add('remote-video');
-            const nameTag = document.createElement('p');
-            nameTag.textContent = isLocal ? 'Você' : userId;
-            videoWrapper.appendChild(video);
-            videoWrapper.appendChild(nameTag);
-            videoGrid.appendChild(videoWrapper);
-        }
-
-        function removeVideoStream(userId) {
-            const videoElement = document.getElementById('video-' + userId);
-            if (videoElement) videoElement.remove();
-            if (peerConnections[userId]) {
-                peerConnections[userId].close();
-                delete peerConnections[userId];
-            }
+            document.getElementById('video-grid').innerHTML = '';
+            alert("Você saiu da chamada.");
         }
 
         function toggleMic() {
-            const enabled = !localStream.getAudioTracks()[0].enabled;
-            localStream.getAudioTracks()[0].enabled = enabled;
-            toggleMicBtn.classList.toggle('btn-mic-on', enabled);
-            toggleMicBtn.classList.toggle('btn-mic-off', !enabled);
+            if (localStream) {
+                const audioTrack = localStream.getAudioTracks()[0];
+                if (audioTrack) {
+                    audioTrack.enabled = !audioTrack.enabled;
+                    const isEnabled = audioTrack.enabled;
+                    document.getElementById('mic-on-icon').classList.toggle('hidden', !isEnabled);
+                    document.getElementById('mic-off-icon').classList.toggle('hidden', isEnabled);
+                    document.getElementById('mic-btn').classList.toggle('bg-red-500', !isEnabled);
+                }
+            }
         }
 
         function toggleVideo() {
-            const enabled = !localStream.getVideoTracks()[0].enabled;
-            localStream.getVideoTracks()[0].enabled = enabled;
-            toggleVideoBtn.classList.toggle('btn-vid-on', enabled);
-            toggleVideoBtn.classList.toggle('btn-vid-off', !enabled);
-        }
-        
-        function displayTranslation(data) {
-            const messageEl = document.createElement('p');
-            messageEl.innerHTML = `<strong>${data.user_id === myUserId ? 'Você' : data.user_id}:</strong> ${data.original} <em class="text-gray-300">(${data.translated})</em>`;
-            chatBox.appendChild(messageEl);
-            chatBox.scrollTop = chatBox.scrollHeight;
-
-            if (data.user_id === myUserId) return;
-            
-            synth.cancel();
-            const utterance = new SpeechSynthesisUtterance(data.translated);
-            const targetLang = destLangSelect.value;
-            const selectedVoice = availableVoices.find(voice => voice.lang === targetLang);
-            utterance.voice = selectedVoice || null;
-            if (!selectedVoice) utterance.lang = targetLang;
-            synth.speak(utterance);
-        }
-
-        function populateLanguageSelects() {
-            const languages = {
-                'pt-BR': 'Português (Brasil)', 'en-US': 'Inglês (EUA)', 'es-ES': 'Espanhol',
-                'fr-FR': 'Francês', 'de-DE': 'Alemão', 'it-IT': 'Italiano', 'ja-JP': 'Japonês',
-            };
-            for (const [code, name] of Object.entries(languages)) {
-                sourceLangSelect.options.add(new Option(name, code));
-                destLangSelect.options.add(new Option(name, code));
+            if (localStream) {
+                const videoTrack = localStream.getVideoTracks()[0];
+                if (videoTrack) {
+                    videoTrack.enabled = !videoTrack.enabled;
+                    const isEnabled = videoTrack.enabled;
+                    document.getElementById('video-on-icon').classList.toggle('hidden', !isEnabled);
+                    document.getElementById('video-off-icon').classList.toggle('hidden', isEnabled);
+                    document.getElementById('video-btn').classList.toggle('bg-red-500', !isEnabled);
+                }
             }
-            sourceLangSelect.value = 'pt-BR';
-            destLangSelect.value = 'en-US';
         }
 
-        init();
+        // --- Inicialização ---
+        document.addEventListener('DOMContentLoaded', () => {
+            start();
+            document.getElementById('leave-btn').addEventListener('click', leaveCall);
+            document.getElementById('mic-btn').addEventListener('click', toggleMic);
+            document.getElementById('video-btn').addEventListener('click', toggleVideo);
+        });
     </script>
 </body>
 </html>

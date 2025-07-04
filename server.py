@@ -1,159 +1,113 @@
-# server.py
-#
-# SERVIDOR WEB PARA VIDEOCHAMADA MULTI-SALA
-# Este servidor gere múltiplas salas de chamada independentes.
-
 import asyncio
 import json
 import logging
+import os
 import uuid
-from collections import defaultdict
-from aiohttp import web
 
-# Configuração básica de logging
+from aiohttp import web
+from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc.contrib.media import MediaRelay
+
+# Configura o logging para depuração
 logging.basicConfig(level=logging.INFO)
 
-# ESTRUTURA DE DADOS PARA AS SALAS:
-# ROOMS = {
-#   'room_id_1': {client_ws_1, client_ws_2},
-#   'room_id_2': {client_ws_3}
-# }
-# CLIENTS = {
-#   client_ws_1: {'room_id': 'room_id_1', 'user_id': 'user_1'},
-#   client_ws_2: {'room_id': 'room_id_1', 'user_id': 'user_2'}
-# }
-ROOMS = defaultdict(set)
-CLIENTS = {}
+# Diretório onde o arquivo HTML está localizado
+ROOT = os.path.dirname(__file__)
 
-# O tradutor continua a ser global
-from googletrans import Translator
-translator = Translator()
+# Cria um relay de mídia para distribuir os streams
+relay = MediaRelay()
+# Mantém o controle das conexões de pares (clientes)
+pcs = set()
 
-async def handle_translation(data):
-    """Lida com o pedido de tradução."""
-    try:
-        text_to_translate = data.get('text')
-        source_lang = data.get('source_lang', 'pt').split('-')[0]
-        dest_lang = data.get('dest_lang', 'en').split('-')[0]
-        if not text_to_translate:
-            return None
-        translated = translator.translate(text_to_translate, src=source_lang, dest=dest_lang)
-        return translated.text
-    except Exception as e:
-        logging.error(f"Erro na tradução: {e}")
-        return "[Erro na tradução]"
+async def offer(request):
+    """
+    Manipula a oferta de SDP de um cliente para iniciar uma conexão WebRTC.
+    """
+    params = await request.json()
+    offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
 
-async def broadcast(room_id, message, exclude_ws):
-    """Envia uma mensagem para todos os clientes numa sala, exceto um."""
-    if room_id in ROOMS:
-        for ws in ROOMS[room_id]:
-            if ws != exclude_ws:
-                await ws.send_json(message)
+    # Cria uma nova conexão de par (RTCPeerConnection)
+    pc = RTCPeerConnection()
+    pc_id = "PeerConnection(%s)" % uuid.uuid4()
+    pcs.add(pc)
 
-async def websocket_handler(request):
-    """Lida com as conexões WebSocket para sinalização, chat e gestão de salas."""
-    ws = web.WebSocketResponse()
-    await ws.prepare(request)
+    def log_info(msg, *args):
+        logging.info(pc_id + " " + msg, *args)
+
+    log_info("Conexão criada")
+
+    @pc.on("datachannel")
+    def on_datachannel(channel):
+        @channel.on("message")
+        def on_message(message):
+            log_info(f"Mensagem do DataChannel: {message}")
+            # Aqui você pode adicionar lógica de chat de texto
+
+    @pc.on("connectionstatechange")
+    async def on_connectionstatechange():
+        log_info("Estado da conexão: %s", pc.connectionState)
+        if pc.connectionState == "failed" or pc.connectionState == "closed":
+            await pc.close()
+            pcs.discard(pc)
+            log_info("Conexão fechada")
+
+    @pc.on("track")
+    def on_track(track):
+        log_info("Track %s recebida", track.kind)
+        # Encaminha a track de mídia para outros pares
+        relay.add_track(track)
+
+        @track.on("ended")
+        async def on_ended():
+            log_info("Track %s encerrada", track.kind)
+            # Você pode adicionar lógica aqui se necessário
+
+    # Define a descrição remota com a oferta recebida
+    await pc.setRemoteDescription(offer)
+
+    # Cria uma resposta SDP para enviar de volta ao cliente
+    answer = await pc.createAnswer()
+    await pc.setLocalDescription(answer)
+
+    log_info("Enviando resposta para o cliente")
+    return web.Response(
+        content_type="application/json",
+        text=json.dumps(
+            {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type}
+        ),
+    )
+
+
+async def on_shutdown(app):
+    """
+    Fecha todas as conexões de pares ao desligar o servidor.
+    """
+    # Fecha todas as conexões RTCPeerConnection
+    coros = [pc.close() for pc in pcs]
+    await asyncio.gather(*coros)
+    pcs.clear()
+
+
+async def index(request):
+    """
+    Serve o arquivo principal da aplicação (index.html).
+    """
+    content = open(os.path.join(ROOT, "index.html"), "r").read()
+    return web.Response(content_type="text/html", text=content)
+
+
+if __name__ == "__main__":
+    app = web.Application()
+    app.on_shutdown.append(on_shutdown)
+    app.router.add_get("/", index)
+    app.router.add_post("/offer", offer)
     
-    logging.info(f"Nova conexão WebSocket estabelecida.")
+    # Inicia o servidor web
+    # Para produção, você deve usar SSL/TLS.
+    # ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    # ssl_context.load_cert_chain("server.crt", "server.key")
+    # web.run_app(app, access_log=None, host="0.0.0.0", port=8080, ssl_context=ssl_context)
+    
+    print("Servidor iniciado em http://localhost:8080")
+    web.run_app(app, access_log=None, host="0.0.0.0", port=8080)
 
-    try:
-        async for msg in ws:
-            if msg.type == web.WSMsgType.TEXT:
-                try:
-                    data = json.loads(msg.data)
-                    msg_type = data.get('type')
-
-                    if msg_type == 'join':
-                        room_id = data['room_id']
-                        user_id = data['user_id']
-                        
-                        # Adiciona o cliente à sala
-                        ROOMS[room_id].add(ws)
-                        CLIENTS[ws] = {'room_id': room_id, 'user_id': user_id}
-                        
-                        logging.info(f"Utilizador {user_id} entrou na sala {room_id}. Participantes: {len(ROOMS[room_id])}")
-
-                        # Notifica os outros utilizadores na sala sobre o novo participante
-                        join_message = {'type': 'user-joined', 'user_id': user_id}
-                        await broadcast(room_id, join_message, ws)
-
-                    elif msg_type in ['offer', 'answer', 'candidate']:
-                        # Retransmite mensagens de sinalização WebRTC para o utilizador alvo
-                        target_id = data.get('target_id')
-                        # Encontra o websocket do alvo
-                        target_ws = None
-                        for client_ws, client_info in CLIENTS.items():
-                            if client_info.get('user_id') == target_id:
-                                target_ws = client_ws
-                                break
-                        
-                        if target_ws:
-                            await target_ws.send_json(data)
-                        else:
-                            logging.warning(f"Sinalização: Utilizador alvo {target_id} não encontrado.")
-
-                    elif msg_type == 'translate':
-                        # Lida com a tradução e envia para a sala
-                        client_info = CLIENTS.get(ws, {})
-                        room_id = client_info.get('room_id')
-                        if room_id:
-                            translated_text = await handle_translation(data)
-                            if translated_text:
-                                response = {
-                                    'type': 'translation', 
-                                    'user_id': data.get('user_id'),
-                                    'original': data.get('text'),
-                                    'translated': translated_text
-                                }
-                                await broadcast(room_id, response, None) # Envia para todos, incluindo quem falou
-
-                except Exception as e:
-                    logging.error(f"Erro ao processar mensagem: {e}")
-
-            elif msg.type == web.WSMsgType.ERROR:
-                logging.error(f'Conexão WebSocket fechada com exceção {ws.exception()}')
-
-    finally:
-        # Lógica de limpeza quando um cliente se desconecta
-        if ws in CLIENTS:
-            client_info = CLIENTS[ws]
-            room_id = client_info['room_id']
-            user_id = client_info['user_id']
-            
-            ROOMS[room_id].remove(ws)
-            del CLIENTS[ws]
-            
-            logging.info(f"Utilizador {user_id} saiu da sala {room_id}. Participantes restantes: {len(ROOMS[room_id])}")
-            
-            # Notifica os restantes que o utilizador saiu
-            await broadcast(room_id, {'type': 'user-left', 'user_id': user_id}, ws)
-
-            # Se a sala ficar vazia, remove-a
-            if not ROOMS[room_id]:
-                del ROOMS[room_id]
-                logging.info(f"Sala {room_id} vazia, a ser removida.")
-
-    return ws
-
-async def handle_room(request):
-    """Serve o ficheiro principal index.html para qualquer rota de sala."""
-    return web.FileResponse('./index.html')
-
-async def redirect_to_new_room(request):
-    """Redireciona o acesso à raiz para uma nova sala com um ID aleatório."""
-    new_room_id = str(uuid.uuid4().hex[:8])
-    raise web.HTTPFound(f'/sala/{new_room_id}')
-
-# Configuração da aplicação web
-app = web.Application()
-app.add_routes([
-    web.get('/', redirect_to_new_room),
-    web.get('/sala/{room_id}', handle_room), # Rota dinâmica para salas
-    web.get('/ws', websocket_handler)
-])
-
-if __name__ == '__main__':
-    port = 8080
-    logging.info(f"A iniciar servidor em http://0.0.0.0:{port}")
-    web.run_app(app, host='0.0.0.0', port=port)
