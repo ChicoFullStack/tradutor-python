@@ -1,4 +1,71 @@
-</i>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plataforma de Videoconferência com Servidor Python</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; -ms-overflow-style: none; scrollbar-width: none; }
+        body::-webkit-scrollbar { display: none; }
+        .video-player-container { 
+            position: relative; 
+            background-color: #2d3748; 
+            border-radius: 0.5rem; 
+            overflow: hidden; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            transition: all 0.3s ease-in-out;
+            cursor: pointer; /* Adiciona cursor de ponteiro para indicar que é clicável */
+        }
+        .video-player { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        .remote-video { transform: scaleX(1); }
+        .video-player.no-mirror {
+            transform: scaleX(1);
+            object-fit: contain; /* Garante que todo o conteúdo do ecrã é visível */
+        }
+        .participant-name { 
+            position: absolute; 
+            bottom: 0; 
+            left: 0; 
+            background-color: rgba(0, 0, 0, 0.5); 
+            padding: 0.25rem 0.75rem; 
+            border-top-right-radius: 0.5rem; 
+            font-size: 0.875rem; 
+            transition: all 0.3s ease-in-out;
+        }
+        /* Estilos para os ícones/miniaturas */
+        .thumbnail {
+            width: 100%;
+            height: 120px; /* Altura fixa para evitar esticamento */
+            flex-shrink: 0; /* Evita que a miniatura encolha */
+        }
+        .thumbnail .participant-name {
+            font-size: 0.7rem;
+            padding: 1px 4px;
+        }
+        /* Estilo para botões desativados */
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex flex-col h-screen overflow-hidden">
+
+    <header class="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-700">
+        <div class="flex items-center space-x-2">
+            <i class="fas fa-video text-blue-400 text-xl"></i>
+            <span class="text-lg font-semibold">ConnectSphere</span>
+        </div>
+        <h1 class="text-xl font-bold">Sala Principal</h1>
+        <div class="flex items-center space-x-6 text-gray-400">
+            <i id="connection-status" class="fas fa-circle text-red-500" title="Desconectado"></i>
         </div>
     </header>
     <main id="video-grid" class="flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto"></main>
@@ -89,13 +156,6 @@
                         await peers[data.sender].addIceCandidate(new RTCIceCandidate(data.candidate));
                     }
                     break;
-                // Novo: Lida com a atualização do estado do microfone de outros utilizadores
-                case 'mute_status':
-                    const muteContainer = document.getElementById(`container-${data.sender}`);
-                    if (muteContainer) {
-                        muteContainer.classList.toggle('muted', data.muted);
-                    }
-                    break;
                 case 'user_left':
                     if (peers[data.user_id]) {
                         peers[data.user_id].close();
@@ -132,12 +192,14 @@
             ws.onerror = (err) => console.error("Erro no WebSocket:", err);
         }
 
+        // --- NOVA LÓGICA DE LAYOUT ---
         function pinParticipant(userIdToPin) {
-            if (isScreenSharing) return;
+            if (isScreenSharing) return; // Não permite fixar durante a partilha de ecrã
 
             const videoGrid = document.getElementById('video-grid');
             const allContainers = Array.from(document.querySelectorAll('.video-player-container'));
 
+            // Se o utilizador clicado já estiver fixado, volta à vista de grelha
             if (pinnedUserId === userIdToPin) {
                 pinnedUserId = null;
                 videoGrid.innerHTML = '';
@@ -153,6 +215,7 @@
             const pinnedContainer = document.getElementById(`container-${userIdToPin}`);
             const remoteContainers = allContainers.filter(c => c.id !== `container-${userIdToPin}`);
 
+            // Limpa e reconfigura o layout para a vista de destaque
             videoGrid.innerHTML = '';
             videoGrid.className = 'flex-grow flex flex-row p-4 gap-4';
 
@@ -178,6 +241,7 @@
             const videoGrid = document.getElementById('video-grid');
             const localContainer = document.getElementById('container-local');
 
+            // Se um utilizador estiver fixado, desfixa-o antes de iniciar a partilha
             if (pinnedUserId) {
                 pinParticipant(pinnedUserId); 
             }
@@ -261,6 +325,7 @@
             const container = document.createElement('div');
             container.id = containerId;
             container.className = 'video-player-container';
+            // Adiciona o evento de clique para fixar/desfixar
             container.onclick = () => pinParticipant(id);
             
             const videoElement = document.createElement('video');
@@ -274,17 +339,12 @@
             nameElement.className = 'participant-name';
             nameElement.innerText = name;
 
-            // Novo: Adiciona o indicador de mudo ao contentor
-            const muteIndicator = document.createElement('div');
-            muteIndicator.className = 'mute-indicator';
-            muteIndicator.innerHTML = `<i class="fas fa-microphone-slash text-white text-xs"></i>`;
-
             container.appendChild(videoElement);
             container.appendChild(nameElement);
-            container.appendChild(muteIndicator);
 
+            // Adicionar novo participante ao local correto (grelha ou miniaturas)
             if (pinnedUserId) {
-                const thumbnailBar = document.querySelector('.w-1/4, .w-1/5');
+                const thumbnailBar = document.querySelector('.w-1/4, .w-1/5'); // Encontra a barra de miniaturas
                 if (thumbnailBar) {
                     container.classList.add('thumbnail');
                     thumbnailBar.appendChild(container);
@@ -319,35 +379,19 @@
             statusIcon.title = 'Desconectado';
         }
         
-        // Função do microfone atualizada
         function toggleMic() { 
             if (localStream) { 
                 const audioTrack = localStream.getAudioTracks()[0];
                 if (audioTrack) {
                     audioTrack.enabled = !audioTrack.enabled;
                     const isEnabled = audioTrack.enabled;
-                    
-                    // Feedback visual no botão de controlo
                     document.getElementById('mic-on-icon').classList.toggle('hidden', !isEnabled);
                     document.getElementById('mic-off-icon').classList.toggle('hidden', isEnabled);
                     document.getElementById('mic-btn').classList.toggle('bg-red-500', !isEnabled);
                     document.getElementById('mic-btn').classList.toggle('bg-gray-700', isEnabled);
-
-                    // Feedback visual no seu próprio vídeo
-                    document.getElementById('container-local').classList.toggle('muted', !isEnabled);
-
-                    // Notifica os outros sobre a mudança de estado
-                    for (const peerId in peers) {
-                        sendMessage({
-                            type: 'mute_status',
-                            muted: !isEnabled,
-                            target: peerId
-                        });
-                    }
                 }
             } 
         }
-
         function toggleVideo() { 
             if (localStream && !isScreenSharing) { 
                 const videoTrack = localStream.getVideoTracks()[0];
@@ -372,4 +416,3 @@
     </script>
 </body>
 </html>
-```
