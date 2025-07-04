@@ -96,8 +96,9 @@
 </head>
 <body class="bg-gray-900 text-white flex flex-col h-screen overflow-hidden">
 
+    <!-- Modal de Entrada/Lobby -->
     <div id="entry-modal" class="fixed inset-0 bg-gray-900 z-50 flex items-center justify-center p-4">
-        <div id="lobby-view" class="bg-gray-800 p-8 rounded-lg shadow-xl text-center w-full max-w-lg">
+        <div id="lobby-view" class="bg-gray-800 p-8 rounded-lg shadow-xl text-center w-full max-w-md">
             <!-- Conteúdo do Lobby será preenchido pelo JavaScript -->
         </div>
     </div>
@@ -544,6 +545,15 @@
             document.getElementById('room-name-display').innerText = `Sala: ${roomName}`;
             document.getElementById('copy-link-btn').classList.remove('hidden');
             
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                createPlayerContainer('local', localStream, localUserName);
+                updateParticipantList();
+            } catch (e) {
+                alert(`Não foi possível obter acesso à câmera e microfone: ${e.name}`);
+                return;
+            }
+
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws/${roomName}`;
             ws = new WebSocket(wsUrl);
