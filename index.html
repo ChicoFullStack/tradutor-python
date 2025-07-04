@@ -79,6 +79,20 @@
         .blinking-icon {
             animation: blinking 1.5s infinite;
         }
+        /* Novo: Animação para emojis flutuantes */
+        @keyframes float-up {
+            0% { transform: translateY(0) scale(1); opacity: 1; }
+            100% { transform: translateY(-80px) scale(1.5); opacity: 0; }
+        }
+        .floating-emoji {
+            position: absolute;
+            bottom: 3rem;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 2rem;
+            animation: float-up 2s ease-out forwards;
+            pointer-events: none; /* Para não interferir com cliques no vídeo */
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white flex flex-col h-screen overflow-hidden">
@@ -104,6 +118,16 @@
             <button id="mic-btn" title="Desativar o som" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="mic-on-icon" class="fas fa-microphone w-6 h-6"></i><i id="mic-off-icon" class="fas fa-microphone-slash w-6 h-6 hidden"></i></button>
             <button id="video-btn" title="Parar vídeo" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="video-on-icon" class="fas fa-video w-6 h-6"></i><i id="video-off-icon" class="fas fa-video-slash w-6 h-6 hidden"></i></button>
             <button id="screen-share-btn" title="Compartilhar tela" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-desktop w-6 h-6"></i></button>
+            <div class="relative group">
+                <button id="reactions-btn" title="Reagir" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-smile w-6 h-6"></i></button>
+                <div id="emoji-palette" class="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-gray-600 rounded-full p-2 flex space-x-2 hidden group-hover:flex">
+                    <span class="emoji-reaction cursor-pointer text-2xl">👍</span>
+                    <span class="emoji-reaction cursor-pointer text-2xl">❤️</span>
+                    <span class="emoji-reaction cursor-pointer text-2xl">😂</span>
+                    <span class="emoji-reaction cursor-pointer text-2xl">🎉</span>
+                    <span class="emoji-reaction cursor-pointer text-2xl">👏</span>
+                </div>
+            </div>
             <button id="participants-btn" title="Ver participantes" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-users w-6 h-6"></i></button>
             <button id="chat-btn" title="Abrir chat" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-comments w-6 h-6"></i></button>
             <button id="file-share-btn" title="Partilhar ficheiro" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-paperclip w-6 h-6"></i></button>
@@ -188,7 +212,6 @@
                 if (message.type === 'metadata') {
                     fileBuffers[message.name] = { chunks: [], receivedSize: 0, metadata: message };
                     showFileNotification(`A receber ${message.name}...`, message.name);
-                    // Ativa a notificação a piscar para o botão de downloads
                     document.getElementById('downloads-btn').classList.add('blinking-icon');
                 } else if (message.type === 'chat') {
                     displayChatMessage(message.content, senderId, false);
@@ -202,6 +225,8 @@
                         peers[senderId].handRaised = message.raised;
                         updateParticipantList();
                     }
+                } else if (message.type === 'emoji_reaction') {
+                    displayEmojiOnVideo(senderId, message.emoji);
                 }
             } catch (e) {
                 const fileInfo = Object.values(fileBuffers).find(f => !f.blob);
@@ -288,6 +313,28 @@
             const chatPanel = document.getElementById('chat-panel');
             if (!isLocal && chatPanel.classList.contains('translate-x-full')) {
                 document.getElementById('chat-btn').classList.add('blinking-icon');
+            }
+        }
+
+        function displayEmojiOnVideo(userId, emoji) {
+            const container = document.getElementById(`container-${userId}`);
+            if (container) {
+                const emojiElement = document.createElement('span');
+                emojiElement.className = 'floating-emoji';
+                emojiElement.innerText = emoji;
+                container.appendChild(emojiElement);
+                setTimeout(() => {
+                    emojiElement.remove();
+                }, 2000); // Remove o emoji após a animação
+            }
+        }
+
+        function sendEmojiReaction(emoji) {
+            displayEmojiOnVideo('local', emoji);
+            for (const peerId in peers) {
+                if (peers[peerId].dataChannel && peers[peerId].dataChannel.readyState === 'open') {
+                    peers[peerId].dataChannel.send(JSON.stringify({ type: 'emoji_reaction', emoji: emoji }));
+                }
             }
         }
 
@@ -852,6 +899,13 @@
             });
             closeParticipantsBtn.addEventListener('click', toggleParticipantsPanel);
             raiseHandBtn.addEventListener('click', toggleRaiseHand);
+
+            // Novo: Eventos para as reações com emoji
+            document.querySelectorAll('.emoji-reaction').forEach(emojiBtn => {
+                emojiBtn.addEventListener('click', (e) => {
+                    sendEmojiReaction(e.target.innerText);
+                });
+            });
         });
     </script>
 </body>
