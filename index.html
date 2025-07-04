@@ -16,7 +16,6 @@
             overflow: hidden;
         }
         
-        /* CORREÇÃO: Layout principal modificado para ser responsivo */
         .app-container {
             display: grid;
             height: 100vh;
@@ -73,12 +72,15 @@
         .control-panel {
             background-color: #2f3136;
             padding: 1rem;
+            flex-shrink: 0; /* Impede que o painel de controlo encolha */
         }
 
         .chat-box {
             background-color: #40444b; /* Cor da caixa de texto do Discord */
             border: none;
-            height: 120px;
+            /* CORREÇÃO: Altura ajustada para melhor visualização em mobile */
+            height: 90px; 
+            flex-shrink: 0; /* Impede que a caixa de chat encolha */
         }
 
         .btn {
@@ -94,9 +96,7 @@
 
     <div class="app-container">
         <!-- Barra Lateral (simulada) -->
-        <!-- CORREÇÃO: A barra lateral fica escondida em mobile (hidden) e aparece em ecrãs médios (md:flex) -->
         <aside class="hidden md:flex sidebar p-2 flex-col items-center space-y-2">
-            <!-- Ícones de servidor podem ser adicionados aqui -->
             <div class="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">TV</div>
         </aside>
 
@@ -104,14 +104,12 @@
         <div class="main-content">
             <!-- Grelha de Vídeos -->
             <main id="video-grid" class="video-container">
-                <!-- Vídeos serão adicionados aqui -->
             </main>
             <!-- Painel de Controlo e Chat -->
             <footer class="control-panel">
                 <div id="chat-box" class="chat-box w-full p-2 mb-4 overflow-y-auto rounded-md">
                     <p class="text-gray-400">Bem-vindo! As traduções aparecerão aqui.</p>
                 </div>
-                <!-- CORREÇÃO: Os controlos empilham em mobile (flex-col) e ficam lado a lado em desktop (md:flex-row) -->
                 <div class="flex flex-col md:flex-row items-center justify-between gap-4 md:gap-0">
                     <div class="flex items-center space-x-4">
                         <button id="toggle-mic" class="btn btn-mic-on text-white font-bold py-2 px-4 rounded">Microfone</button>
@@ -128,10 +126,8 @@
         </div>
 
         <!-- Lista de Usuários (simulada) -->
-        <!-- CORREÇÃO: A lista de utilizadores fica escondida em mobile (hidden) e aparece em ecrãs médios (md:block) -->
         <aside class="hidden md:block user-list p-4">
             <h2 class="font-bold text-lg">Online</h2>
-            <!-- Nomes de usuários podem ser adicionados aqui -->
         </aside>
     </div>
 
@@ -158,14 +154,32 @@
 
         const synth = window.speechSynthesis;
         let availableVoices = [];
+        // CORREÇÃO: Flag para controlar o desbloqueio do áudio
+        let isAudioUnlocked = false;
 
         function loadVoices() {
             availableVoices = synth.getVoices();
             console.log("Vozes disponíveis:", availableVoices);
         }
 
+        // CORREÇÃO: Função para desbloquear a síntese de voz no primeiro clique do utilizador
+        function unlockAudio() {
+            if (isAudioUnlocked) return;
+            // Toca um som vazio para ativar o contexto de áudio
+            const silentUtterance = new SpeechSynthesisUtterance("");
+            synth.speak(silentUtterance);
+            isAudioUnlocked = true;
+            console.log("Contexto de áudio desbloqueado.");
+            // Remove os listeners para que esta função não seja chamada novamente
+            document.body.removeEventListener('click', unlockAudio);
+        }
+
+
         async function init() {
             try {
+                // CORREÇÃO: Adiciona um listener de clique no corpo do documento para desbloquear o áudio
+                document.body.addEventListener('click', unlockAudio, { once: true });
+
                 localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 addVideoStream(myUserId, localStream, true);
                 setupUI();
