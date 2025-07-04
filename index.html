@@ -106,6 +106,9 @@
             <button id="screen-share-btn" title="Compartilhar tela" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-desktop w-6 h-6"></i></button>
             <button id="participants-btn" title="Ver participantes" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-users w-6 h-6"></i></button>
             <button id="chat-btn" title="Abrir chat" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-comments w-6 h-6"></i></button>
+            <!-- Botões de partilha de ficheiros reintegrados -->
+            <button id="file-share-btn" title="Partilhar ficheiro" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-paperclip w-6 h-6"></i></button>
+            <button id="downloads-btn" title="Ver ficheiros recebidos" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-download w-6 h-6"></i></button>
             <div class="w-px h-6 bg-gray-600 mx-2"></div>
             <button id="leave-btn" title="Sair da chamada" class="bg-red-600 hover:bg-red-700 transition-colors rounded-full p-3 px-4"><i class="fas fa-phone-slash w-6 h-6"></i></button>
         </div>
@@ -141,15 +144,12 @@
         </form>
     </div>
 
-    <!-- Novo: Painel de Participantes -->
     <div id="participants-panel" class="fixed top-0 right-0 h-full w-80 bg-gray-800 shadow-lg z-50 transform translate-x-full flex flex-col">
         <div class="flex items-center justify-between p-4 border-b border-gray-700">
             <h3 class="text-xl font-semibold">Participantes</h3>
             <button id="close-participants-btn" class="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
         </div>
-        <div id="participants-list" class="flex-grow p-4 space-y-3 overflow-y-auto">
-            <!-- Lista de participantes será inserida aqui -->
-        </div>
+        <div id="participants-list" class="flex-grow p-4 space-y-3 overflow-y-auto"></div>
         <div class="p-4 border-t border-gray-700">
             <button id="raise-hand-btn" class="w-full flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition-colors">
                 <i class="fas fa-hand-paper mr-2"></i>
