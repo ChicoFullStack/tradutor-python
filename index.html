@@ -92,23 +92,15 @@
             cursor: crosshair;
             touch-action: none;
         }
-        .connection-status-overlay {
-            position: absolute;
-            inset: 0;
-            background-color: rgba(0, 0, 0, 0.6);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.875rem;
-            color: #cbd5e1;
-            text-transform: capitalize;
-        }
     </style>
 </head>
 <body class="bg-gray-900 text-white flex flex-col h-screen overflow-hidden">
 
-    <div id="entry-modal" class="fixed inset-0 bg-gray-900 z-50 flex items-center justify-center">
-        <div id="lobby-view" class="bg-gray-800 p-8 rounded-lg shadow-xl text-center w-full max-w-md"></div>
+    <!-- Modal de Entrada/Lobby -->
+    <div id="entry-modal" class="fixed inset-0 bg-gray-900 z-50 flex items-center justify-center p-4">
+        <div id="lobby-view" class="bg-gray-800 p-8 rounded-lg shadow-xl text-center w-full max-w-md">
+            <!-- Conteúdo do Lobby será preenchido pelo JavaScript -->
+        </div>
     </div>
 
     <header class="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-700">
