@@ -102,6 +102,13 @@
             pc.ontrack = (event) => {
                 const stream = event.streams[0];
                 if (stream) {
+                    // Quando um stream termina (usuário sai), remove o elemento de vídeo.
+                    stream.onremovetrack = () => {
+                        const videoElement = document.getElementById(`video-${stream.id}`);
+                        if (videoElement) {
+                            videoElement.parentElement.remove();
+                        }
+                    };
                     createPlayerContainer(stream.id, stream, `Remoto ${stream.id.substring(0, 6)}`);
                 }
             };
@@ -115,6 +122,7 @@
                 // Exibe o vídeo local
                 createPlayerContainer('local', localStream, 'Você');
             } catch (e) {
+                console.error("Não foi possível obter acesso à câmera e microfone:", e);
                 alert("Não foi possível obter acesso à câmera e microfone: " + e.name);
                 return;
             }
@@ -124,33 +132,39 @@
             await pc.setLocalDescription(offer);
 
             // Envia a oferta para o servidor Python
-            const response = await fetch("/offer", {
-                body: JSON.stringify({
-                    sdp: pc.localDescription.sdp,
-                    type: pc.localDescription.type,
-                }),
-                headers: { "Content-Type": "application/json" },
-                method: "POST",
-            });
+            try {
+                const response = await fetch("/offer", {
+                    body: JSON.stringify({
+                        sdp: pc.localDescription.sdp,
+                        type: pc.localDescription.type,
+                    }),
+                    headers: { "Content-Type": "application/json" },
+                    method: "POST",
+                });
 
-            // Recebe a resposta do servidor e define a descrição remota
-            const answer = await response.json();
-            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+                // Recebe a resposta do servidor e define a descrição remota
+                const answer = await response.json();
+                await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            } catch (e) {
+                console.error("Falha ao negociar com o servidor:", e);
+                alert("Não foi possível conectar ao servidor.");
+            }
         }
 
         // Função para criar o contêiner do vídeo na UI
         function createPlayerContainer(id, stream, name) {
             const videoGrid = document.getElementById('video-grid');
-            let container = document.getElementById(`container-${id}`);
-            if (container) {
-                return;
+            const containerId = `container-${id}`;
+            if (document.getElementById(containerId)) {
+                return; // Já existe
             }
 
-            container = document.createElement('div');
-            container.id = `container-${id}`;
+            const container = document.createElement('div');
+            container.id = containerId;
             container.className = 'video-player-container';
             
             const videoElement = document.createElement('video');
+            videoElement.id = `video-${id}`;
             videoElement.srcObject = stream;
             videoElement.autoplay = true;
             videoElement.playsInline = true;
@@ -176,7 +190,7 @@
                 localStream.getTracks().forEach(track => track.stop());
             }
             document.getElementById('video-grid').innerHTML = '';
-            alert("Você saiu da chamada.");
+            console.log("Você saiu da chamada.");
         }
 
         function toggleMic() {
@@ -188,6 +202,7 @@
                     document.getElementById('mic-on-icon').classList.toggle('hidden', !isEnabled);
                     document.getElementById('mic-off-icon').classList.toggle('hidden', isEnabled);
                     document.getElementById('mic-btn').classList.toggle('bg-red-500', !isEnabled);
+                    document.getElementById('mic-btn').classList.toggle('bg-gray-700', isEnabled);
                 }
             }
         }
@@ -201,6 +216,7 @@
                     document.getElementById('video-on-icon').classList.toggle('hidden', !isEnabled);
                     document.getElementById('video-off-icon').classList.toggle('hidden', isEnabled);
                     document.getElementById('video-btn').classList.toggle('bg-red-500', !isEnabled);
+                    document.getElementById('video-btn').classList.toggle('bg-gray-700', isEnabled);
                 }
             }
         }
