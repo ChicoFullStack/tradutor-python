@@ -106,7 +106,6 @@
             <button id="screen-share-btn" title="Compartilhar tela" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-desktop w-6 h-6"></i></button>
             <button id="participants-btn" title="Ver participantes" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-users w-6 h-6"></i></button>
             <button id="chat-btn" title="Abrir chat" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-comments w-6 h-6"></i></button>
-            <!-- Botões de partilha de ficheiros reintegrados -->
             <button id="file-share-btn" title="Partilhar ficheiro" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-paperclip w-6 h-6"></i></button>
             <button id="downloads-btn" title="Ver ficheiros recebidos" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-download w-6 h-6"></i></button>
             <div class="w-px h-6 bg-gray-600 mx-2"></div>
@@ -189,6 +188,8 @@
                 if (message.type === 'metadata') {
                     fileBuffers[message.name] = { chunks: [], receivedSize: 0, metadata: message };
                     showFileNotification(`A receber ${message.name}...`, message.name);
+                    // Ativa a notificação a piscar para o botão de downloads
+                    document.getElementById('downloads-btn').classList.add('blinking-icon');
                 } else if (message.type === 'chat') {
                     displayChatMessage(message.content, senderId, false);
                 } else if (message.type === 'name') {
@@ -813,6 +814,8 @@
                 renderDownloadsList();
                 downloadsModal.classList.remove('hidden');
                 downloadsModal.classList.add('flex');
+                // Para a notificação a piscar quando o modal é aberto
+                downloadsBtn.classList.remove('blinking-icon');
             });
 
             closeModalBtn.addEventListener('click', () => {
