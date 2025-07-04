@@ -50,7 +50,7 @@
 </head>
 <body class="bg-gray-900 text-white flex flex-col h-screen overflow-hidden">
 
-    <!-- Cabeçalho Superior -->
+    <!-- Cabeçalho e Grade de Vídeo (sem alterações) -->
     <header class="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-700">
         <div class="flex items-center space-x-2">
             <i class="fas fa-video text-blue-400 text-xl"></i>
@@ -64,37 +64,22 @@
             <i class="fas fa-shield-alt cursor-pointer hover:text-white transition-colors"></i>
         </div>
     </header>
-
-    <!-- Grade de Vídeos dos Participantes -->
-    <main id="video-grid" class="flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto">
-        <!-- Vídeo local será adicionado aqui -->
-    </main>
-
-    <!-- Barra de Controles Inferior -->
+    <main id="video-grid" class="flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto"></main>
     <footer class="flex-shrink-0 p-4">
         <div class="max-w-2xl mx-auto bg-gray-800/80 backdrop-blur-sm rounded-full flex items-center justify-between p-2 shadow-lg">
             <div class="flex items-center space-x-2">
-                <button id="mic-btn" title="Desativar o som" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3">
-                    <i id="mic-on-icon" class="fas fa-microphone w-6 h-6"></i>
-                    <i id="mic-off-icon" class="fas fa-microphone-slash w-6 h-6 hidden"></i>
-                </button>
-                <button id="video-btn" title="Parar vídeo" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3">
-                    <i id="video-on-icon" class="fas fa-video w-6 h-6"></i>
-                    <i id="video-off-icon" class="fas fa-video-slash w-6 h-6 hidden"></i>
-                </button>
+                <button id="mic-btn" title="Desativar o som" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="mic-on-icon" class="fas fa-microphone w-6 h-6"></i><i id="mic-off-icon" class="fas fa-microphone-slash w-6 h-6 hidden"></i></button>
+                <button id="video-btn" title="Parar vídeo" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="video-on-icon" class="fas fa-video w-6 h-6"></i><i id="video-off-icon" class="fas fa-video-slash w-6 h-6 hidden"></i></button>
             </div>
-            
-            <button id="leave-btn" title="Sair da chamada" class="bg-red-600 hover:bg-red-700 transition-colors rounded-full p-3 px-4">
-                <i class="fas fa-phone-slash w-6 h-6"></i>
-            </button>
+            <button id="leave-btn" title="Sair da chamada" class="bg-red-600 hover:bg-red-700 transition-colors rounded-full p-3 px-4"><i class="fas fa-phone-slash w-6 h-6"></i></button>
         </div>
     </footer>
 
     <script>
-        let pc = null; // PeerConnection
+        let pc = null;
         let localStream = null;
+        let ws = null;
 
-        // Função para iniciar a conexão
         async function start() {
             pc = new RTCPeerConnection();
 
@@ -102,15 +87,39 @@
             pc.ontrack = (event) => {
                 const stream = event.streams[0];
                 if (stream) {
-                    // Quando um stream termina (usuário sai), remove o elemento de vídeo.
                     stream.onremovetrack = () => {
                         const videoElement = document.getElementById(`video-${stream.id}`);
-                        if (videoElement) {
-                            videoElement.parentElement.remove();
-                        }
+                        if (videoElement) videoElement.parentElement.remove();
                     };
                     createPlayerContainer(stream.id, stream, `Remoto ${stream.id.substring(0, 6)}`);
                 }
+            };
+
+            // Conecta ao servidor WebSocket
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+
+            ws.onopen = async () => {
+                console.log("Conectado ao servidor de sinalização.");
+                // Inicia a chamada após a conexão WebSocket ser estabelecida
+                await negotiate();
+            };
+
+            ws.onmessage = async (event) => {
+                const message = JSON.parse(event.data);
+                if (message.type === 'answer') {
+                    console.log("Resposta recebida do servidor.");
+                    try {
+                        await pc.setRemoteDescription(new RTCSessionDescription(message));
+                    } catch (e) {
+                        console.error("Erro ao definir descrição remota:", e);
+                    }
+                }
+            };
+            
+            ws.onclose = () => {
+                console.log("Desconectado do servidor de sinalização.");
+                pc.close();
             };
 
             // Pede acesso à câmera e microfone do usuário
@@ -119,49 +128,33 @@
                 localStream.getTracks().forEach((track) => {
                     pc.addTrack(track, localStream);
                 });
-                // Exibe o vídeo local
                 createPlayerContainer('local', localStream, 'Você');
             } catch (e) {
-                console.error("Não foi possível obter acesso à câmera e microfone:", e);
-                alert("Não foi possível obter acesso à câmera e microfone: " + e.name);
-                return;
+                alert(`Não foi possível obter acesso à câmera e microfone: ${e.name}`);
             }
-
-            // Cria uma oferta SDP para iniciar a negociação
+        }
+        
+        async function negotiate() {
+            console.log("Criando oferta...");
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
-
-            // Envia a oferta para o servidor Python
-            try {
-                const response = await fetch("/offer", {
-                    body: JSON.stringify({
-                        sdp: pc.localDescription.sdp,
-                        type: pc.localDescription.type,
-                    }),
-                    headers: { "Content-Type": "application/json" },
-                    method: "POST",
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Erro do servidor: ${response.status} ${response.statusText}`);
-                }
-
-                // Recebe a resposta do servidor e define a descrição remota
-                const answer = await response.json();
-                await pc.setRemoteDescription(new RTCSessionDescription(answer));
-            } catch (e) {
-                console.error("Falha ao negociar com o servidor:", e);
-                alert("Não foi possível conectar ao servidor. Verifique se o servidor Python está rodando e se não há erros no console do servidor.");
+            
+            // Envia a oferta para o servidor via WebSocket
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    sdp: pc.localDescription.sdp,
+                    type: pc.localDescription.type,
+                }));
+                console.log("Oferta enviada ao servidor.");
+            } else {
+                console.error("WebSocket não está aberto. Não é possível enviar a oferta.");
             }
         }
 
-        // Função para criar o contêiner do vídeo na UI
         function createPlayerContainer(id, stream, name) {
             const videoGrid = document.getElementById('video-grid');
             const containerId = `container-${id}`;
-            if (document.getElementById(containerId)) {
-                return; // Já existe
-            }
+            if (document.getElementById(containerId)) return;
 
             const container = document.createElement('div');
             container.id = containerId;
@@ -172,7 +165,7 @@
             videoElement.srcObject = stream;
             videoElement.autoplay = true;
             videoElement.playsInline = true;
-            videoElement.muted = (id === 'local'); // Silencia o vídeo local para evitar eco
+            videoElement.muted = (id === 'local');
             videoElement.className = `video-player ${id !== 'local' ? 'remote-video' : ''}`;
             
             const nameElement = document.createElement('div');
@@ -184,18 +177,11 @@
             videoGrid.appendChild(container);
         }
 
-        // --- Lógica de Controles ---
         function leaveCall() {
-            if (pc) {
-                pc.close();
-                pc = null;
-            }
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-            }
+            if (ws) ws.close();
+            if (pc) pc.close();
+            if (localStream) localStream.getTracks().forEach(track => track.stop());
             document.getElementById('video-grid').innerHTML = '';
-            console.log("Você saiu da chamada.");
-            // Recarrega a página para permitir uma nova conexão
             window.location.reload();
         }
 
@@ -227,7 +213,6 @@
             }
         }
 
-        // --- Inicialização ---
         document.addEventListener('DOMContentLoaded', () => {
             start();
             document.getElementById('leave-btn').addEventListener('click', leaveCall);
