@@ -22,6 +22,7 @@
             justify-content: center; 
             transition: all 0.3s ease-in-out;
             cursor: pointer;
+            aspect-ratio: 16 / 9; /* Força a proporção de 16:9 em todas as vistas */
         }
         .video-player { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
         .remote-video { transform: scaleX(1); }
@@ -41,7 +42,6 @@
         }
         .thumbnail {
             width: 100%;
-            aspect-ratio: 16 / 9; /* Força a proporção de 16:9 */
             flex-shrink: 0; /* Evita que a miniatura encolha */
         }
         .thumbnail .participant-name {
