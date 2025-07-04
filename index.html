@@ -52,7 +52,7 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
-        .mute-indicator {
+        .mute-indicator, .hand-raised-indicator {
             position: absolute;
             top: 0.5rem;
             right: 0.5rem;
@@ -64,7 +64,11 @@
         .video-player-container.muted .mute-indicator {
             display: flex;
         }
-        #chat-panel {
+        .video-player-container.hand-raised .hand-raised-indicator {
+            display: flex;
+            right: 2.5rem; /* Posição ajustada para não sobrepor o ícone de mudo */
+        }
+        #chat-panel, #participants-panel {
             transition: transform 0.3s ease-in-out;
         }
         @keyframes blinking {
@@ -79,7 +83,6 @@
 </head>
 <body class="bg-gray-900 text-white flex flex-col h-screen overflow-hidden">
 
-    <!-- Novo: Modal de Entrada -->
     <div id="entry-modal" class="fixed inset-0 bg-gray-900 z-50 flex items-center justify-center">
         <div class="bg-gray-800 p-8 rounded-lg shadow-xl text-center">
             <h2 class="text-2xl font-bold mb-4">Entrar na Reunião</h2>
@@ -101,9 +104,8 @@
             <button id="mic-btn" title="Desativar o som" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="mic-on-icon" class="fas fa-microphone w-6 h-6"></i><i id="mic-off-icon" class="fas fa-microphone-slash w-6 h-6 hidden"></i></button>
             <button id="video-btn" title="Parar vídeo" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="video-on-icon" class="fas fa-video w-6 h-6"></i><i id="video-off-icon" class="fas fa-video-slash w-6 h-6 hidden"></i></button>
             <button id="screen-share-btn" title="Compartilhar tela" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-desktop w-6 h-6"></i></button>
-            <button id="file-share-btn" title="Partilhar ficheiro" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-paperclip w-6 h-6"></i></button>
+            <button id="participants-btn" title="Ver participantes" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-users w-6 h-6"></i></button>
             <button id="chat-btn" title="Abrir chat" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-comments w-6 h-6"></i></button>
-            <button id="downloads-btn" title="Ver ficheiros recebidos" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-download w-6 h-6"></i></button>
             <div class="w-px h-6 bg-gray-600 mx-2"></div>
             <button id="leave-btn" title="Sair da chamada" class="bg-red-600 hover:bg-red-700 transition-colors rounded-full p-3 px-4"><i class="fas fa-phone-slash w-6 h-6"></i></button>
         </div>
@@ -116,9 +118,7 @@
     <main id="video-grid" class="flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto"></main>
     
     <input type="file" id="file-input" class="hidden" />
-
     <div id="file-transfer-panel" class="fixed bottom-4 right-4 w-80 space-y-2 z-30"></div>
-
     <div id="downloads-modal" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden items-center justify-center">
         <div class="bg-gray-800 rounded-lg shadow-xl w-full max-w-lg p-6">
             <div class="flex items-center justify-between mb-4">
@@ -141,11 +141,29 @@
         </form>
     </div>
 
+    <!-- Novo: Painel de Participantes -->
+    <div id="participants-panel" class="fixed top-0 right-0 h-full w-80 bg-gray-800 shadow-lg z-50 transform translate-x-full flex flex-col">
+        <div class="flex items-center justify-between p-4 border-b border-gray-700">
+            <h3 class="text-xl font-semibold">Participantes</h3>
+            <button id="close-participants-btn" class="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+        </div>
+        <div id="participants-list" class="flex-grow p-4 space-y-3 overflow-y-auto">
+            <!-- Lista de participantes será inserida aqui -->
+        </div>
+        <div class="p-4 border-t border-gray-700">
+            <button id="raise-hand-btn" class="w-full flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition-colors">
+                <i class="fas fa-hand-paper mr-2"></i>
+                <span id="raise-hand-text">Levantar a Mão</span>
+            </button>
+        </div>
+    </div>
+
     <script>
         let localUserName = '';
         let localStream = null;
         let screenStream = null;
         let isScreenSharing = false;
+        let isHandRaised = false;
         let pinnedUserId = null;
         let ws = null;
         const peers = {};
@@ -174,13 +192,14 @@
                 } else if (message.type === 'chat') {
                     displayChatMessage(message.content, senderId, false);
                 } else if (message.type === 'name') {
-                    // Armazena e atualiza o nome do par
                     if (peers[senderId]) {
                         peers[senderId].name = message.name;
-                        const nameElement = document.querySelector(`#container-${senderId} .participant-name`);
-                        if (nameElement) {
-                            nameElement.innerText = message.name;
-                        }
+                        updateParticipantList();
+                    }
+                } else if (message.type === 'raise_hand') {
+                    if (peers[senderId]) {
+                        peers[senderId].handRaised = message.raised;
+                        updateParticipantList();
                     }
                 }
             } catch (e) {
@@ -347,7 +366,6 @@
 
             const dataChannel = pc.createDataChannel('main');
             dataChannel.onopen = () => {
-                // Envia o nome assim que o canal de dados estiver aberto
                 dataChannel.send(JSON.stringify({ type: 'name', name: localUserName }));
             };
             dataChannel.onmessage = (e) => handleDataChannelMessage(e, targetId);
@@ -373,9 +391,11 @@
                         await pc.setLocalDescription(offer);
                         sendMessage({ type: 'offer', offer: offer, target: userId });
                     }
+                    updateParticipantList();
                     break;
                 case 'user_joined':
                     console.log(`Utilizador ${data.user_id} juntou-se.`);
+                    updateParticipantList();
                     break;
                 case 'offer':
                     const pc = createPeerConnection(data.sender);
@@ -395,9 +415,9 @@
                     }
                     break;
                 case 'mute_status':
-                    const muteContainer = document.getElementById(`container-${data.sender}`);
-                    if (muteContainer) {
-                        muteContainer.classList.toggle('muted', data.muted);
+                    if (peers[data.sender]) {
+                        peers[data.sender].muted = data.muted;
+                        updateParticipantList();
                     }
                     break;
                 case 'user_left':
@@ -407,6 +427,7 @@
                     }
                     const videoContainer = document.getElementById(`container-${data.user_id}`);
                     if (videoContainer) videoContainer.remove();
+                    updateParticipantList();
                     break;
             }
         }
@@ -415,6 +436,7 @@
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 createPlayerContainer('local', localStream, localUserName);
+                updateParticipantList();
             } catch (e) {
                 alert(`Não foi possível obter acesso à câmera e microfone: ${e.name}`);
                 return;
@@ -600,6 +622,7 @@
             } else {
                 videoGrid.appendChild(container);
             }
+            updateParticipantList();
         }
 
         function leaveCall() {
@@ -653,6 +676,7 @@
                     target: peerId
                 });
             }
+            updateParticipantList();
         }
 
         function toggleVideo() { 
@@ -696,6 +720,60 @@
             if (!chatPanel.classList.contains('translate-x-full')) {
                 document.getElementById('chat-btn').classList.remove('blinking-icon');
             }
+        }
+
+        function toggleParticipantsPanel() {
+            const participantsPanel = document.getElementById('participants-panel');
+            participantsPanel.classList.toggle('translate-x-full');
+        }
+
+        function updateParticipantList() {
+            const listContainer = document.getElementById('participants-list');
+            listContainer.innerHTML = ''; // Limpa a lista para a reconstruir
+
+            // Adiciona o utilizador local
+            const localAudioTrack = localStream?.getAudioTracks()[0];
+            const isLocalMuted = localAudioTrack ? !localAudioTrack.enabled : false;
+            const localItem = document.createElement('div');
+            localItem.className = 'flex items-center justify-between';
+            localItem.innerHTML = `
+                <span>${localUserName} (Você)</span>
+                <div class="flex items-center space-x-2">
+                    ${isHandRaised ? '<i class="fas fa-hand-paper text-yellow-400"></i>' : ''}
+                    ${isLocalMuted ? '<i class="fas fa-microphone-slash text-red-500"></i>' : ''}
+                </div>
+            `;
+            listContainer.appendChild(localItem);
+
+            // Adiciona os outros participantes
+            for (const peerId in peers) {
+                const peer = peers[peerId];
+                const peerItem = document.createElement('div');
+                peerItem.className = 'flex items-center justify-between';
+                peerItem.innerHTML = `
+                    <span>${peer.name || `Remoto ${peerId.substring(0, 6)}`}</span>
+                    <div class="flex items-center space-x-2">
+                        ${peer.handRaised ? '<i class="fas fa-hand-paper text-yellow-400"></i>' : ''}
+                        ${peer.muted ? '<i class="fas fa-microphone-slash text-red-500"></i>' : ''}
+                    </div>
+                `;
+                listContainer.appendChild(peerItem);
+            }
+        }
+        
+        function toggleRaiseHand() {
+            isHandRaised = !isHandRaised;
+            const raiseHandText = document.getElementById('raise-hand-text');
+            raiseHandText.innerText = isHandRaised ? 'Abaixar a Mão' : 'Levantar a Mão';
+            
+            for (const peerId in peers) {
+                sendMessage({
+                    type: 'raise_hand',
+                    raised: isHandRaised,
+                    target: peerId
+                });
+            }
+            updateParticipantList();
         }
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -759,6 +837,18 @@
                 e.preventDefault();
                 sendChatMessage();
             });
+
+            // Eventos do Painel de Participantes
+            const participantsBtn = document.getElementById('participants-btn');
+            const closeParticipantsBtn = document.getElementById('close-participants-btn');
+            const raiseHandBtn = document.getElementById('raise-hand-btn');
+
+            participantsBtn.addEventListener('click', () => {
+                updateParticipantList();
+                toggleParticipantsPanel();
+            });
+            closeParticipantsBtn.addEventListener('click', toggleParticipantsPanel);
+            raiseHandBtn.addEventListener('click', toggleRaiseHand);
         });
     </script>
 </body>
