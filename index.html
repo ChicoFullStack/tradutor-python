@@ -253,6 +253,8 @@
                     displayEmojiOnVideo(senderId, message.emoji);
                 } else if (message.type === 'whiteboard') {
                     handleWhiteboardDraw(message.data);
+                } else if (message.type === 'whiteboard_state') {
+                    setWhiteboardState(message.state === 'open');
                 }
             } catch (e) {
                 const fileInfo = Object.values(fileBuffers).find(f => !f.blob);
@@ -963,14 +965,11 @@
             });
 
             document.getElementById('whiteboard-btn').addEventListener('click', () => {
-                document.getElementById('whiteboard-panel').classList.remove('hidden');
-                document.getElementById('whiteboard-panel').classList.add('flex');
-                initWhiteboard();
+                toggleWhiteboardPanel();
             });
 
             document.getElementById('close-whiteboard-btn').addEventListener('click', () => {
-                document.getElementById('whiteboard-panel').classList.add('hidden');
-                document.getElementById('whiteboard-panel').classList.remove('flex');
+                toggleWhiteboardPanel();
             });
             
             document.getElementById('clear-whiteboard-btn').addEventListener('click', () => {
@@ -987,8 +986,40 @@
         });
 
         // --- LÓGICA DO QUADRO BRANCO ---
+        function setWhiteboardState(isOpen) {
+            const whiteboardPanel = document.getElementById('whiteboard-panel');
+            const isHidden = whiteboardPanel.classList.contains('hidden');
+
+            if (isOpen && isHidden) {
+                whiteboardPanel.classList.remove('hidden');
+                whiteboardPanel.classList.add('flex');
+                initWhiteboard();
+            } else if (!isOpen && !isHidden) {
+                whiteboardPanel.classList.add('hidden');
+                whiteboardPanel.classList.remove('flex');
+            }
+        }
+
+        function toggleWhiteboardPanel() {
+            const whiteboardPanel = document.getElementById('whiteboard-panel');
+            const isOpen = whiteboardPanel.classList.contains('hidden');
+            setWhiteboardState(isOpen);
+
+            // Notifica os outros sobre a mudança de estado
+            for (const peerId in peers) {
+                sendMessage({
+                    type: 'whiteboard_state',
+                    state: isOpen ? 'open' : 'closed',
+                    target: peerId
+                });
+            }
+        }
+
         function initWhiteboard() {
             const canvas = document.getElementById('whiteboard-canvas');
+            if (canvas.dataset.initialized) return; // Evita reinicializar
+            canvas.dataset.initialized = true;
+
             whiteboardCtx = canvas.getContext('2d');
             
             const resizeCanvas = () => {
@@ -1053,7 +1084,10 @@
         }
 
         function handleWhiteboardDraw(data) {
-            if (!whiteboardCtx) return;
+            if (!whiteboardCtx) {
+                // Se o quadro branco não estiver inicializado, força a abertura
+                setWhiteboardState(true);
+            }
             if (data.type === 'draw') {
                 whiteboardCtx.beginPath();
                 whiteboardCtx.strokeStyle = data.color;
