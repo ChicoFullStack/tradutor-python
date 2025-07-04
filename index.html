@@ -96,15 +96,10 @@
 </head>
 <body class="bg-gray-900 text-white flex flex-col h-screen overflow-hidden">
 
+    <!-- Modal de Entrada/Lobby -->
     <div id="entry-modal" class="fixed inset-0 bg-gray-900 z-50 flex items-center justify-center">
-        <div class="bg-gray-800 p-8 rounded-lg shadow-xl text-center w-full max-w-md">
-            <h2 class="text-2xl font-bold mb-4">Entrar na Reunião</h2>
-            <p class="text-gray-400 mb-6">Insira o seu nome e o nome da sala.</p>
-            <form id="entry-form" class="space-y-4">
-                <input type="text" id="name-input" class="w-full bg-gray-700 text-white rounded-md p-3 text-center text-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="O seu nome" required>
-                <input type="text" id="room-input" class="w-full bg-gray-700 text-white rounded-md p-3 text-center text-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nome da Sala" required>
-                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-md transition-colors">Entrar na Chamada</button>
-            </form>
+        <div id="lobby-view" class="bg-gray-800 p-8 rounded-lg shadow-xl text-center w-full max-w-md">
+            <!-- Conteúdo será preenchido pelo JavaScript -->
         </div>
     </div>
 
@@ -130,8 +125,7 @@
             </div>
             <button id="participants-btn" title="Ver participantes" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-users w-6 h-6"></i></button>
             <button id="chat-btn" title="Abrir chat" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-comments w-6 h-6"></i></button>
-            <button id="file-share-btn" title="Partilhar ficheiro" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-paperclip w-6 h-6"></i></button>
-            <button id="downloads-btn" title="Ver ficheiros recebidos" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-download w-6 h-6"></i></button>
+            <button id="copy-link-btn" title="Copiar link do convite" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3 hidden"><i class="fas fa-link w-6 h-6"></i></button>
             <div class="w-px h-6 bg-gray-600 mx-2"></div>
             <button id="leave-btn" title="Sair da chamada" class="bg-red-600 hover:bg-red-700 transition-colors rounded-full p-3 px-4"><i class="fas fa-phone-slash w-6 h-6"></i></button>
         </div>
@@ -485,6 +479,7 @@
         async function start(room) {
             roomName = room;
             document.getElementById('room-name-display').innerText = `Sala: ${roomName}`;
+            document.getElementById('copy-link-btn').classList.remove('hidden');
             
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -829,21 +824,43 @@
             updateParticipantList();
         }
 
+        // --- LÓGICA DE INICIALIZAÇÃO ---
         document.addEventListener('DOMContentLoaded', () => {
-            const entryForm = document.getElementById('entry-form');
+            const lobbyView = document.getElementById('lobby-view');
             const entryModal = document.getElementById('entry-modal');
-            const nameInput = document.getElementById('name-input');
-            const roomInput = document.getElementById('room-input');
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomParam = urlParams.get('room');
 
-            entryForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                localUserName = nameInput.value.trim();
-                const roomName = roomInput.value.trim();
-                if (localUserName && roomName) {
-                    entryModal.classList.add('hidden');
-                    start(roomName);
-                }
-            });
+            if (roomParam) {
+                // Vista de "Juntar-se à Sala"
+                lobbyView.innerHTML = `
+                    <h2 class="text-2xl font-bold mb-4">Juntar-se à Sala: ${roomParam}</h2>
+                    <p class="text-gray-400 mb-6">Insira o seu nome para continuar.</p>
+                    <form id="entry-form" class="space-y-4">
+                        <input type="text" id="name-input" class="w-full bg-gray-700 text-white rounded-md p-3 text-center text-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="O seu nome" required>
+                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-md transition-colors">Entrar na Chamada</button>
+                    </form>
+                `;
+                document.getElementById('entry-form').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    localUserName = document.getElementById('name-input').value.trim();
+                    if (localUserName) {
+                        entryModal.classList.add('hidden');
+                        start(roomParam);
+                    }
+                });
+            } else {
+                // Vista de "Criar Sala"
+                lobbyView.innerHTML = `
+                    <h2 class="text-2xl font-bold mb-4">Bem-vindo ao ConnectSphere</h2>
+                    <p class="text-gray-400 mb-6">Crie uma nova sala de reunião e convide outros.</p>
+                    <button id="create-room-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-md transition-colors">Criar Nova Reunião</button>
+                `;
+                document.getElementById('create-room-btn').addEventListener('click', () => {
+                    const newRoomId = Math.random().toString(36).substring(2, 9);
+                    window.location.search = `?room=${newRoomId}`;
+                });
+            }
 
             document.getElementById('leave-btn').addEventListener('click', leaveCall);
             document.getElementById('mic-btn').addEventListener('click', toggleMic);
@@ -908,6 +925,12 @@
             document.querySelectorAll('.emoji-reaction').forEach(emojiBtn => {
                 emojiBtn.addEventListener('click', (e) => {
                     sendEmojiReaction(e.target.innerText);
+                });
+            });
+
+            document.getElementById('copy-link-btn').addEventListener('click', () => {
+                navigator.clipboard.writeText(window.location.href).then(() => {
+                    alert('Link do convite copiado para a área de transferência!');
                 });
             });
         });
