@@ -39,7 +39,6 @@
 
         .video-container {
             display: grid;
-            /* CORREÇÃO: Diminuído o tamanho mínimo do vídeo para 200px */
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 1rem;
             flex-grow: 1;
@@ -84,7 +83,7 @@
         }
 
         .btn {
-            transition: background-color 0.3s;
+            transition: background-color: 0.3s;
         }
         .btn-mic-on { background-color: #3ba55d; }
         .btn-mic-off { background-color: #ed4245; }
@@ -146,12 +145,11 @@
         let myUserId = 'user-' + Math.random().toString(36).substr(2, 9);
         let peerConnections = {}; // Armazena as conexões P2P
 
-        // CORREÇÃO: O erro de segurança ("insecure WebSocket") acontece porque a página
-        // é carregada via HTTPS, mas tenta ligar-se a um WebSocket não seguro (ws://).
-        // Para corrigir, forçamos a ligação a ser segura (wss://) e apontamos para o
-        // servidor local, onde se espera que ele esteja a ser executado.
-        // NOTA: Para que isto funcione, o seu servidor Python também precisa de suportar ligações SSL/WSS.
-        const ws = new WebSocket(`wss://localhost:8080/ws`);
+        // CORREÇÃO: O endereço do WebSocket é agora dinâmico.
+        // Ele determina o protocolo (ws:// ou wss://) e o host (ex: boloko.cloud)
+        // a partir do URL atual do navegador.
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
 
         const iceServers = {
             'iceServers': [
@@ -187,10 +185,9 @@
                 const data = JSON.parse(event.data);
                 handleSignalingData(data);
             };
-            // Adicionado para dar feedback sobre erros de conexão
             ws.onerror = (event) => {
                 console.error("Erro no WebSocket:", event);
-                chatBox.innerHTML += `<p class="text-red-400">Não foi possível ligar ao servidor WebSocket em wss://localhost:8080. Verifique se o servidor está a correr e configurado para SSL/WSS.</p>`;
+                chatBox.innerHTML += `<p class="text-red-400">Não foi possível ligar ao servidor WebSocket.</p>`;
             }
         }
 
