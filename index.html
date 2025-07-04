@@ -68,21 +68,23 @@
 </head>
 <body class="bg-gray-900 text-white flex flex-col h-screen overflow-hidden">
 
-    <!-- Alterado: Controlos movidos para o cabeçalho -->
     <header class="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-700">
         <div class="flex items-center space-x-2 w-1/3">
             <i class="fas fa-video text-blue-400 text-xl"></i>
             <span class="text-lg font-semibold">ConnectSphere</span>
         </div>
 
-        <!-- Botões de Controlo Centrais -->
         <div class="flex items-center justify-center space-x-2 w-1/3">
             <button id="mic-btn" title="Desativar o som" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="mic-on-icon" class="fas fa-microphone w-6 h-6"></i><i id="mic-off-icon" class="fas fa-microphone-slash w-6 h-6 hidden"></i></button>
             <button id="video-btn" title="Parar vídeo" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="video-on-icon" class="fas fa-video w-6 h-6"></i><i id="video-off-icon" class="fas fa-video-slash w-6 h-6 hidden"></i></button>
             <button id="screen-share-btn" title="Compartilhar tela" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3">
                 <i class="fas fa-desktop w-6 h-6"></i>
             </button>
-            <div class="w-px h-6 bg-gray-600 mx-2"></div> <!-- Separador visual -->
+            <!-- Novo: Botão de Partilha de Ficheiros -->
+            <button id="file-share-btn" title="Partilhar ficheiro" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3">
+                <i class="fas fa-paperclip w-6 h-6"></i>
+            </button>
+            <div class="w-px h-6 bg-gray-600 mx-2"></div>
             <button id="leave-btn" title="Sair da chamada" class="bg-red-600 hover:bg-red-700 transition-colors rounded-full p-3 px-4"><i class="fas fa-phone-slash w-6 h-6"></i></button>
         </div>
 
@@ -91,10 +93,13 @@
         </div>
     </header>
     
-    <!-- Alterado: Padding inferior removido -->
     <main id="video-grid" class="flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto"></main>
     
-    <!-- Removido: O footer já não é necessário -->
+    <!-- Novo: Input de ficheiro escondido -->
+    <input type="file" id="file-input" class="hidden" />
+
+    <!-- Novo: Área para notificações de transferência de ficheiros -->
+    <div id="file-transfer-panel" class="fixed bottom-4 right-4 w-80 space-y-2 z-30"></div>
 
     <script>
         let localStream = null;
@@ -103,6 +108,7 @@
         let pinnedUserId = null;
         let ws = null;
         const peers = {};
+        const fileBuffers = {}; // Armazena os pedaços de ficheiros recebidos
 
         const configuration = {
             iceServers: [
@@ -117,6 +123,125 @@
             }
         }
 
+        // --- LÓGICA DE PARTILHA DE FICHEIROS ---
+        function handleDataChannelMessage(event) {
+            try {
+                const message = JSON.parse(event.data);
+                if (message.type === 'metadata') {
+                    fileBuffers[message.name] = {
+                        chunks: [],
+                        receivedSize: 0,
+                        metadata: message
+                    };
+                    showFileNotification(`A receber ${message.name}...`, message.name);
+                }
+            } catch (e) {
+                // Se não for JSON, é um pedaço de ficheiro (chunk)
+                const fileInfo = Object.values(fileBuffers).find(f => !f.blob);
+                if (fileInfo) {
+                    fileInfo.chunks.push(event.data);
+                    fileInfo.receivedSize += event.data.byteLength;
+                    
+                    const progress = Math.round((fileInfo.receivedSize / fileInfo.metadata.size) * 100);
+                    updateFileProgress(fileInfo.metadata.name, progress);
+
+                    if (fileInfo.receivedSize === fileInfo.metadata.size) {
+                        const fileBlob = new Blob(fileInfo.chunks);
+                        fileInfo.blob = fileBlob;
+                        showDownloadLink(fileInfo);
+                    }
+                }
+            }
+        }
+
+        function sendFile(file) {
+            const chunkSize = 16384; // 16KB
+            const reader = new FileReader();
+            let offset = 0;
+
+            const metadata = {
+                type: 'metadata',
+                name: file.name,
+                size: file.size,
+                fileType: file.type
+            };
+            
+            // Envia metadados para todos os pares
+            for (const peerId in peers) {
+                if (peers[peerId].dataChannel && peers[peerId].dataChannel.readyState === 'open') {
+                    peers[peerId].dataChannel.send(JSON.stringify(metadata));
+                }
+            }
+            showFileNotification(`A enviar ${file.name}...`, file.name);
+
+            reader.onload = (e) => {
+                const chunk = e.target.result;
+                // Envia pedaços para todos os pares
+                for (const peerId in peers) {
+                    if (peers[peerId].dataChannel && peers[peerId].dataChannel.readyState === 'open') {
+                        peers[peerId].dataChannel.send(chunk);
+                    }
+                }
+                offset += chunk.byteLength;
+                
+                const progress = Math.round((offset / file.size) * 100);
+                updateFileProgress(file.name, progress);
+
+                if (offset < file.size) {
+                    readSlice(offset);
+                } else {
+                     updateFileProgress(file.name, 100, true);
+                }
+            };
+
+            const readSlice = o => {
+                const slice = file.slice(offset, o + chunkSize);
+                reader.readAsArrayBuffer(slice);
+            };
+            readSlice(0);
+        }
+
+        function showFileNotification(text, id) {
+            const panel = document.getElementById('file-transfer-panel');
+            let notification = document.getElementById(`file-${id}`);
+            if (!notification) {
+                notification = document.createElement('div');
+                notification.id = `file-${id}`;
+                notification.className = 'bg-gray-700 p-3 rounded-lg shadow-lg text-sm transition-all';
+                panel.appendChild(notification);
+            }
+            notification.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <span class="truncate">${text}</span>
+                    <div class="w-16 text-right" id="progress-${id}">0%</div>
+                </div>
+                <div class="w-full bg-gray-600 rounded-full h-1.5 mt-1">
+                    <div id="bar-${id}" class="bg-blue-500 h-1.5 rounded-full" style="width: 0%"></div>
+                </div>
+            `;
+        }
+
+        function updateFileProgress(id, progress, finished = false) {
+            const progressBar = document.getElementById(`bar-${id}`);
+            const progressText = document.getElementById(`progress-${id}`);
+            if (progressBar) progressBar.style.width = `${progress}%`;
+            if (progressText) progressText.innerText = finished ? 'Concluído' : `${progress}%`;
+        }
+        
+        function showDownloadLink(fileInfo) {
+            const notification = document.getElementById(`file-${fileInfo.metadata.name}`);
+            if (notification) {
+                const url = URL.createObjectURL(fileInfo.blob);
+                notification.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <span class="truncate">Recebeu ${fileInfo.metadata.name}</span>
+                        <a href="${url}" download="${fileInfo.metadata.name}" class="ml-2 px-2 py-1 bg-green-500 rounded text-xs">Descarregar</a>
+                    </div>`;
+            }
+        }
+
+        // --- FIM DA LÓGICA DE PARTILHA DE FICHEIROS ---
+
         function createPeerConnection(targetId) {
             const pc = new RTCPeerConnection(configuration);
 
@@ -129,12 +254,24 @@
             pc.ontrack = (event) => {
                 createPlayerContainer(targetId, event.streams[0]);
             };
+            
+            // Lida com o canal de dados criado pelo outro par
+            pc.ondatachannel = (event) => {
+                const dataChannel = event.channel;
+                dataChannel.onmessage = handleDataChannelMessage;
+                peers[targetId].dataChannel = dataChannel;
+            };
 
+            // Cria o canal de dados para este par
+            const dataChannel = pc.createDataChannel('fileTransfer');
+            dataChannel.onmessage = handleDataChannelMessage;
+            peers[targetId] = pc;
+            peers[targetId].dataChannel = dataChannel; // Armazena a referência
+            
             localStream.getTracks().forEach(track => {
                 pc.addTrack(track, localStream);
             });
 
-            peers[targetId] = pc;
             return pc;
         }
 
@@ -403,7 +540,6 @@
             statusIcon.title = 'Desconectado';
         }
         
-        // Função do microfone corrigida e mais robusta
         function toggleMic() { 
             if (!localStream || !localStream.getAudioTracks().length) {
                 console.warn("Nenhuma faixa de áudio local para silenciar.");
@@ -412,21 +548,17 @@
             
             const audioTrack = localStream.getAudioTracks()[0];
             
-            // Inverte o estado atual
             audioTrack.enabled = !audioTrack.enabled;
-            const isMuted = !audioTrack.enabled; // isMuted é verdadeiro se a faixa estiver desativada
+            const isMuted = !audioTrack.enabled; 
             
-            // Atualiza a UI do botão de forma explícita
             const micBtn = document.getElementById('mic-btn');
             document.getElementById('mic-on-icon').classList.toggle('hidden', isMuted);
             document.getElementById('mic-off-icon').classList.toggle('hidden', !isMuted);
             micBtn.classList.toggle('bg-red-500', isMuted);
             micBtn.classList.toggle('bg-gray-700', !isMuted);
 
-            // Atualiza o indicador de mudo no seu próprio vídeo
             document.getElementById('container-local').classList.toggle('muted', isMuted);
 
-            // Notifica os outros sobre a mudança de estado
             for (const peerId in peers) {
                 sendMessage({
                     type: 'mute_status',
@@ -456,6 +588,17 @@
             document.getElementById('mic-btn').addEventListener('click', toggleMic);
             document.getElementById('video-btn').addEventListener('click', toggleVideo);
             document.getElementById('screen-share-btn').addEventListener('click', toggleScreenShare);
+            
+            // Liga o botão de partilha de ficheiros ao input escondido
+            document.getElementById('file-share-btn').addEventListener('click', () => {
+                document.getElementById('file-input').click();
+            });
+            document.getElementById('file-input').addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    sendFile(file);
+                }
+            });
         });
     </script>
 </body>
