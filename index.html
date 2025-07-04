@@ -196,7 +196,7 @@
                     const screenTrack = screenStream.getVideoTracks()[0];
                     
                     // Mudar layout para o modo de partilha
-                    videoGrid.className = 'flex items-center justify-center p-4'; // Centraliza o ecrã principal
+                    videoGrid.className = 'flex-grow flex items-center justify-center p-4'; // Mantém flex-grow e centraliza o ecrã
                     
                     const thumbnailBar = document.createElement('div');
                     thumbnailBar.id = 'thumbnail-bar';
@@ -211,7 +211,7 @@
 
                     // Fazer o ecrã partilhado ocupar o espaço principal e definir o tamanho
                     videoGrid.appendChild(localContainer);
-                    localContainer.classList.add('w-4/5'); // Define a largura para 80%
+                    localContainer.classList.add('w-3/5'); // Define a largura para 60%
                     
                     for (const peerId in peers) {
                         const sender = peers[peerId].getSenders().find(s => s.track && s.track.kind === 'video');
@@ -242,7 +242,7 @@
                 }
                 videoGrid.className = 'flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto';
                 videoGrid.insertBefore(localContainer, videoGrid.firstChild);
-                localContainer.classList.remove('w-4/5'); // Remove a classe de tamanho
+                localContainer.classList.remove('w-3/5'); // Remove a classe de tamanho
 
                 for (const peerId in peers) {
                     const sender = peers[peerId].getSenders().find(s => s.track && s.track.kind === 'video');
