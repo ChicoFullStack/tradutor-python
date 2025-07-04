@@ -80,9 +80,12 @@
             <button id="screen-share-btn" title="Compartilhar tela" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3">
                 <i class="fas fa-desktop w-6 h-6"></i>
             </button>
-            <!-- Novo: Botão de Partilha de Ficheiros -->
             <button id="file-share-btn" title="Partilhar ficheiro" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3">
                 <i class="fas fa-paperclip w-6 h-6"></i>
+            </button>
+            <!-- Novo: Botão para ver os downloads -->
+            <button id="downloads-btn" title="Ver ficheiros recebidos" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3">
+                <i class="fas fa-download w-6 h-6"></i>
             </button>
             <div class="w-px h-6 bg-gray-600 mx-2"></div>
             <button id="leave-btn" title="Sair da chamada" class="bg-red-600 hover:bg-red-700 transition-colors rounded-full p-3 px-4"><i class="fas fa-phone-slash w-6 h-6"></i></button>
@@ -95,11 +98,22 @@
     
     <main id="video-grid" class="flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto"></main>
     
-    <!-- Novo: Input de ficheiro escondido -->
     <input type="file" id="file-input" class="hidden" />
 
-    <!-- Novo: Área para notificações de transferência de ficheiros -->
     <div id="file-transfer-panel" class="fixed bottom-4 right-4 w-80 space-y-2 z-30"></div>
+
+    <!-- Novo: Modal de Downloads -->
+    <div id="downloads-modal" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden items-center justify-center">
+        <div class="bg-gray-800 rounded-lg shadow-xl w-full max-w-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold">Ficheiros Recebidos</h3>
+                <button id="close-modal-btn" class="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+            </div>
+            <div id="downloads-list" class="space-y-2 max-h-80 overflow-y-auto">
+                <!-- A lista de ficheiros será inserida aqui -->
+            </div>
+        </div>
+    </div>
 
     <script>
         let localStream = null;
@@ -108,7 +122,8 @@
         let pinnedUserId = null;
         let ws = null;
         const peers = {};
-        const fileBuffers = {}; // Armazena os pedaços de ficheiros recebidos
+        const fileBuffers = {};
+        const receivedFiles = []; // Armazena os ficheiros recebidos com sucesso
 
         const configuration = {
             iceServers: [
@@ -136,7 +151,6 @@
                     showFileNotification(`A receber ${message.name}...`, message.name);
                 }
             } catch (e) {
-                // Se não for JSON, é um pedaço de ficheiro (chunk)
                 const fileInfo = Object.values(fileBuffers).find(f => !f.blob);
                 if (fileInfo) {
                     fileInfo.chunks.push(event.data);
@@ -155,18 +169,12 @@
         }
 
         function sendFile(file) {
-            const chunkSize = 16384; // 16KB
+            const chunkSize = 16384;
             const reader = new FileReader();
             let offset = 0;
 
-            const metadata = {
-                type: 'metadata',
-                name: file.name,
-                size: file.size,
-                fileType: file.type
-            };
+            const metadata = { type: 'metadata', name: file.name, size: file.size, fileType: file.type };
             
-            // Envia metadados para todos os pares
             for (const peerId in peers) {
                 if (peers[peerId].dataChannel && peers[peerId].dataChannel.readyState === 'open') {
                     peers[peerId].dataChannel.send(JSON.stringify(metadata));
@@ -176,24 +184,20 @@
 
             reader.onload = (e) => {
                 const chunk = e.target.result;
-                // Envia pedaços para todos os pares
                 for (const peerId in peers) {
                     if (peers[peerId].dataChannel && peers[peerId].dataChannel.readyState === 'open') {
                         peers[peerId].dataChannel.send(chunk);
                     }
                 }
                 offset += chunk.byteLength;
-                
                 const progress = Math.round((offset / file.size) * 100);
                 updateFileProgress(file.name, progress);
-
                 if (offset < file.size) {
                     readSlice(offset);
                 } else {
                      updateFileProgress(file.name, 100, true);
                 }
             };
-
             const readSlice = o => {
                 const slice = file.slice(offset, o + chunkSize);
                 reader.readAsArrayBuffer(slice);
@@ -207,7 +211,6 @@
             if (!notification) {
                 notification = document.createElement('div');
                 notification.id = `file-${id}`;
-                // Adicionado transition-opacity e duration para o efeito de fade-out
                 notification.className = 'bg-gray-700 p-3 rounded-lg shadow-lg text-sm transition-opacity duration-500';
                 panel.appendChild(notification);
             }
@@ -226,8 +229,7 @@
             setTimeout(() => {
                 const notification = document.getElementById(notificationId);
                 if (notification) {
-                    notification.classList.add('opacity-0'); // Inicia o fade-out
-                    // Remove o elemento do DOM após a transição
+                    notification.classList.add('opacity-0');
                     setTimeout(() => notification.remove(), 500); 
                 }
             }, delay);
@@ -239,22 +241,23 @@
             if (progressBar) progressBar.style.width = `${progress}%`;
             if (progressText) progressText.innerText = finished ? 'Concluído' : `${progress}%`;
             
-            // Se o envio terminou, recolhe a notificação após 5 segundos
             if (finished) {
                 hideNotification(`file-${id}`, 5000);
             }
         }
         
         function showDownloadLink(fileInfo) {
+            const url = URL.createObjectURL(fileInfo.blob);
+            // Adiciona à lista persistente para o modal
+            receivedFiles.push({ name: fileInfo.metadata.name, url: url });
+
             const notification = document.getElementById(`file-${fileInfo.metadata.name}`);
             if (notification) {
-                const url = URL.createObjectURL(fileInfo.blob);
                 notification.innerHTML = `
                     <div class="flex items-center justify-between">
                         <span class="truncate">Recebeu ${fileInfo.metadata.name}</span>
                         <a href="${url}" download="${fileInfo.metadata.name}" class="ml-2 px-2 py-1 bg-green-500 rounded text-xs">Descarregar</a>
                     </div>`;
-                // Recolhe a notificação de download após 15 segundos
                 hideNotification(notification.id, 15000);
             }
         }
@@ -599,6 +602,27 @@
             } 
         }
 
+        // Novo: Função para renderizar a lista de downloads no modal
+        function renderDownloadsList() {
+            const listContainer = document.getElementById('downloads-list');
+            listContainer.innerHTML = ''; // Limpa a lista atual
+
+            if (receivedFiles.length === 0) {
+                listContainer.innerHTML = '<p class="text-gray-400">Nenhum ficheiro recebido ainda.</p>';
+                return;
+            }
+
+            receivedFiles.forEach(file => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'flex items-center justify-between bg-gray-700 p-2 rounded';
+                fileItem.innerHTML = `
+                    <span class="truncate">${file.name}</span>
+                    <a href="${file.url}" download="${file.name}" class="ml-2 px-2 py-1 bg-green-500 rounded text-xs flex-shrink-0">Descarregar</a>
+                `;
+                listContainer.appendChild(fileItem);
+            });
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             start();
             document.getElementById('leave-btn').addEventListener('click', leaveCall);
@@ -606,7 +630,6 @@
             document.getElementById('video-btn').addEventListener('click', toggleVideo);
             document.getElementById('screen-share-btn').addEventListener('click', toggleScreenShare);
             
-            // Liga o botão de partilha de ficheiros ao input escondido
             document.getElementById('file-share-btn').addEventListener('click', () => {
                 document.getElementById('file-input').click();
             });
@@ -614,6 +637,29 @@
                 const file = event.target.files[0];
                 if (file) {
                     sendFile(file);
+                }
+            });
+
+            // Novo: Eventos para o modal de downloads
+            const downloadsBtn = document.getElementById('downloads-btn');
+            const downloadsModal = document.getElementById('downloads-modal');
+            const closeModalBtn = document.getElementById('close-modal-btn');
+
+            downloadsBtn.addEventListener('click', () => {
+                renderDownloadsList();
+                downloadsModal.classList.remove('hidden');
+                downloadsModal.classList.add('flex');
+            });
+
+            closeModalBtn.addEventListener('click', () => {
+                downloadsModal.classList.add('hidden');
+                downloadsModal.classList.remove('flex');
+            });
+
+            downloadsModal.addEventListener('click', (event) => {
+                if (event.target === downloadsModal) { // Fecha apenas se clicar no fundo escuro
+                    downloadsModal.classList.add('hidden');
+                    downloadsModal.classList.remove('flex');
                 }
             });
         });
