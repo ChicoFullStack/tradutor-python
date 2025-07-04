@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import uuid
+import ssl
 
 from aiohttp import web
 from aiortc import RTCPeerConnection, RTCSessionDescription
@@ -51,14 +52,13 @@ async def offer(request):
     def on_track(track):
         """
         Quando uma track (áudio ou vídeo) é recebida de um cliente,
-        nós a retransmitimos para todos os outros clientes conectados.
+        nós a adicionamos ao relay para que outros clientes possam recebê-la.
         """
         log_info("Track %s recebida", track.kind)
-        
-        # Adiciona a track recebida ao relay para que outros possam se inscrever nela.
-        # O `relay.subscribe(track)` cria uma nova track que é uma cópia da original.
+        # O relay.subscribe(track) cria uma nova track que é uma cópia da original.
+        # Esta é a maneira correta de retransmitir a mídia.
         for p in pcs:
-            if p is not pc: # Não envia a track de volta para quem a enviou
+            if p is not pc:
                 p.addTrack(relay.subscribe(track))
 
     # Define a oferta recebida do cliente.
@@ -104,7 +104,16 @@ if __name__ == "__main__":
     app.router.add_get("/favicon.ico", favicon) # Adiciona a rota do favicon
     app.router.add_post("/offer", offer)
     
+    # Para produção, você deve usar SSL/TLS. WebRTC requer conexões seguras (HTTPS)
+    # quando não está rodando em localhost.
+    # ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    # try:
+    #     ssl_context.load_cert_chain("server.crt", "server.key")
+    #     print("Certificados SSL carregados. Rodando em HTTPS.")
+    # except FileNotFoundError:
+    #     print("Aviso: Certificados SSL (server.crt, server.key) não encontrados. Rodando em HTTP.")
+    #     print("WebRTC pode não funcionar em navegadores que não sejam localhost.")
+    #     ssl_context = None
+    
     print("Servidor iniciado em http://localhost:8080")
-    # Para produção, você precisará configurar SSL/TLS.
-    web.run_app(app, access_log=None, host="0.0.0.0", port=8080)
-
+    web.run_app(app, access_log=None, host="0.0.0.0", port=8080, ssl_context=None)

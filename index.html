@@ -142,12 +142,16 @@
                     method: "POST",
                 });
 
+                if (!response.ok) {
+                    throw new Error(`Erro do servidor: ${response.status} ${response.statusText}`);
+                }
+
                 // Recebe a resposta do servidor e define a descrição remota
                 const answer = await response.json();
                 await pc.setRemoteDescription(new RTCSessionDescription(answer));
             } catch (e) {
                 console.error("Falha ao negociar com o servidor:", e);
-                alert("Não foi possível conectar ao servidor.");
+                alert("Não foi possível conectar ao servidor. Verifique se o servidor Python está rodando e se não há erros no console do servidor.");
             }
         }
 
@@ -191,6 +195,8 @@
             }
             document.getElementById('video-grid').innerHTML = '';
             console.log("Você saiu da chamada.");
+            // Recarrega a página para permitir uma nova conexão
+            window.location.reload();
         }
 
         function toggleMic() {
