@@ -99,12 +99,7 @@
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
 
-            ws.onopen = async () => {
-                console.log("Conectado ao servidor de sinalização.");
-                // Inicia a chamada após a conexão WebSocket ser estabelecida
-                await negotiate();
-            };
-
+            // Este manipulador agora apenas processa as respostas recebidas
             ws.onmessage = async (event) => {
                 const message = JSON.parse(event.data);
                 if (message.type === 'answer') {
@@ -119,35 +114,53 @@
             
             ws.onclose = () => {
                 console.log("Desconectado do servidor de sinalização.");
-                pc.close();
+                if (pc) {
+                    pc.close();
+                }
             };
 
-            // Pede acesso à câmera e microfone do usuário
+            // Pede acesso à câmera e microfone do usuário PRIMEIRO
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 localStream.getTracks().forEach((track) => {
                     pc.addTrack(track, localStream);
                 });
                 createPlayerContainer('local', localStream, 'Você');
+
+                // AGORA, com a mídia garantida, esperamos que o WebSocket esteja pronto para negociar
+                if (ws.readyState === WebSocket.OPEN) {
+                    await negotiate();
+                } else {
+                    // Se ainda não estiver aberto, esperamos pelo evento onopen
+                    ws.onopen = async () => {
+                        console.log("Conectado ao servidor de sinalização.");
+                        await negotiate();
+                    };
+                }
+
             } catch (e) {
-                alert(`Não foi possível obter acesso à câmera e microfone: ${e.name}`);
+                alert(`Não foi possível obter acesso à câmera e microfone: ${e.name}. Verifique as permissões do navegador para este site e certifique-se de que nenhum outro aplicativo esteja a usar a câmara.`);
             }
         }
         
         async function negotiate() {
-            console.log("Criando oferta...");
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            
-            // Envia a oferta para o servidor via WebSocket
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    sdp: pc.localDescription.sdp,
-                    type: pc.localDescription.type,
-                }));
-                console.log("Oferta enviada ao servidor.");
-            } else {
-                console.error("WebSocket não está aberto. Não é possível enviar a oferta.");
+            console.log("A criar oferta...");
+            try {
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                
+                // Envia a oferta para o servidor via WebSocket
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        sdp: pc.localDescription.sdp,
+                        type: pc.localDescription.type,
+                    }));
+                    console.log("Oferta enviada ao servidor.");
+                } else {
+                    console.error("WebSocket não está aberto. Não é possível enviar a oferta.");
+                }
+            } catch (e) {
+                console.error("Falha ao criar a oferta:", e);
             }
         }
 
