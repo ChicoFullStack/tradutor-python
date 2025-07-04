@@ -86,15 +86,10 @@
 </head>
 <body>
 
-    <!-- CORREÇÃO: As classes responsivas foram movidas do CSS para o HTML -->
-    <div class="app-container grid-cols-1 md:grid-cols-[72px_1fr_240px]">
-        <!-- Barra Lateral (simulada) -->
-        <aside class="hidden md:flex sidebar p-2 flex-col items-center space-y-2 bg-[#202225]">
-            <div class="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">TV</div>
-        </aside>
-
+    <!-- CORREÇÃO: As barras laterais foram removidas e o layout simplificado para uma única coluna. -->
+    <div class="app-container">
         <!-- Conteúdo Principal -->
-        <div class="main-content col-span-full md:col-auto">
+        <div class="main-content">
             <!-- Grelha de Vídeos -->
             <main id="video-grid" class="video-container">
             </main>
@@ -117,11 +112,6 @@
                 </div>
             </footer>
         </div>
-
-        <!-- Lista de Usuários (simulada) -->
-        <aside class="hidden md:block user-list p-4 bg-[#2f3136] border-l border-[#202225]">
-            <h2 class="font-bold text-lg">Online</h2>
-        </aside>
     </div>
 
     <script>
