@@ -5,96 +5,68 @@ import os
 import uuid
 
 from aiohttp import web
-from aiortc import RTCPeerConnection, RTCSessionDescription
-from aiortc.contrib.media import MediaRelay
 
-# Configuração
-ROOT = os.path.dirname(__file__)
 logging.basicConfig(level=logging.INFO)
+ROOT = os.path.dirname(__file__)
 
-# Globais para gerenciar conexões e mídia
-relay = MediaRelay()
-pcs = set()
-
-async def handle_offer(pc, offer):
-    """
-    Processa a oferta SDP recebida de um cliente.
-    """
-    await pc.setRemoteDescription(offer)
-
-    # Adiciona as tracks de mídia existentes ao novo par
-    for track in relay.tracks:
-        pc.addTrack(relay.subscribe(track))
-
-    answer = await pc.createAnswer()
-    await pc.setLocalDescription(answer)
-    return {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type}
+# Dicionário para armazenar os clientes conectados (websockets)
+clients = {}
 
 async def websocket_handler(request):
     """
-    Manipula a conexão WebSocket para sinalização WebRTC.
+    Manipula as conexões WebSocket para a sinalização.
     """
+    client_id = str(uuid.uuid4())
     ws = web.WebSocketResponse()
     await ws.prepare(request)
-    
-    pc = RTCPeerConnection()
-    pc_id = f"PeerConnection({uuid.uuid4()})"
-    pcs.add(pc)
-    logging.info(f"{pc_id}: Conexão WebSocket aberta.")
+    clients[client_id] = ws
+    logging.info(f"Cliente {client_id} conectado.")
 
-    @pc.on("track")
-    def on_track(track):
-        """
-        Quando uma track é recebida de um par, a adiciona ao relay
-        e a retransmite para todos os outros pares.
-        """
-        logging.info(f"Track {track.kind} recebida de {pc_id}")
-        # Adiciona a track ao relay para que futuros participantes a recebam
-        relayed_track = relay.add_track(track)
-        
-        # Retransmite a nova track para todos os outros participantes já conectados
-        for other_pc in pcs:
-            if other_pc is not pc:
-                other_pc.addTrack(relayed_track)
+    try:
+        # Informa o novo cliente sobre os outros já conectados
+        other_clients = [cid for cid in clients if cid != client_id]
+        await ws.send_json({"type": "all_users", "users": other_clients})
 
-    @pc.on("connectionstatechange")
-    async def on_connectionstatechange():
-        logging.info(f"Estado da conexão de {pc_id}: {pc.connectionState}")
-        if pc.connectionState in ["failed", "disconnected", "closed"]:
-            await ws.close()
+        # Informa os outros clientes sobre o novo participante
+        for cid, client_ws in clients.items():
+            if cid != client_id:
+                await client_ws.send_json({"type": "user_joined", "user_id": client_id})
 
-    async for msg in ws:
-        if msg.type == web.WSMsgType.TEXT:
-            data = json.loads(msg.data)
-            if data["type"] == "offer":
-                logging.info(f"Oferta recebida de {pc_id}")
-                offer = RTCSessionDescription(sdp=data["sdp"], type=data["type"])
-                answer = await handle_offer(pc, offer)
-                await ws.send_json({"type": "answer", **answer})
-        elif msg.type == web.WSMsgType.ERROR:
-            logging.error(f"Erro na conexão WebSocket de {pc_id}: {ws.exception()}")
+        # Loop principal para receber e retransmitir mensagens
+        async for msg in ws:
+            if msg.type == web.WSMsgType.TEXT:
+                data = json.loads(msg.data)
+                target_id = data.get("target")
+                
+                # Retransmite a mensagem para o cliente alvo
+                if target_id and target_id in clients:
+                    # Adiciona o ID do remetente para que o destinatário saiba quem enviou
+                    data["sender"] = client_id
+                    await clients[target_id].send_json(data)
+                else:
+                    logging.warning(f"Mensagem para alvo desconhecido: {target_id}")
 
-    # Limpeza quando a conexão é fechada
-    logging.info(f"{pc_id}: Conexão WebSocket fechada.")
-    pcs.discard(pc)
-    await pc.close()
+            elif msg.type == web.WSMsgType.ERROR:
+                logging.error(f"Erro no WebSocket do cliente {client_id}: {ws.exception()}")
+
+    finally:
+        # Limpeza quando um cliente se desconecta
+        logging.info(f"Cliente {client_id} desconectado.")
+        clients.pop(client_id, None)
+        # Informa os clientes restantes que este saiu
+        for client_ws in clients.values():
+            await client_ws.send_json({"type": "user_left", "user_id": client_id})
+
     return ws
 
-
 async def index(request):
-    """Serve o arquivo principal da aplicação (index.html)."""
+    """Serve o ficheiro principal da aplicação (index.html)."""
     with open(os.path.join(ROOT, "index.html"), "r") as f:
         return web.Response(text=f.read(), content_type="text/html")
 
-async def favicon(request):
-    """Evita erros 404 para o favicon."""
-    return web.Response(status=200)
-
-app = web.Application()
-app.router.add_get("/", index)
-app.router.add_get("/favicon.ico", favicon)
-app.router.add_get("/ws", websocket_handler)
-
 if __name__ == "__main__":
+    app = web.Application()
+    app.router.add_get("/", index)
+    app.router.add_get("/ws", websocket_handler)
     print("Servidor iniciado em http://localhost:8080")
     web.run_app(app, access_log=None, host="0.0.0.0", port=8080)
