@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Videochamada Web com Tradução</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estilo para um tema escuro e moderno inspirado no Discord */
+        body {
+            background-color: #36393f; /* Cinza escuro do Discord */
+            color: #dcddde;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+        
+        .app-container {
+            display: grid;
+            height: 100vh;
+            grid-template-columns: 72px 1fr 240px; /* Sidebar | Conteúdo Principal | Lista de Usuários */
+            grid-template-rows: 1fr;
+        }
+
+        .sidebar {
+            background-color: #202225; /* Cor da barra de servidores */
+        }
+
+        .main-content {
+            background-color: #2f3136; /* Cor do canal de texto/vídeo */
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        
+        .user-list {
+            background-color: #2f3136; /* Cor da lista de usuários */
+            border-left: 1px solid #202225;
+        }
+
+        .video-container {
+            display: grid;
+            /* CORREÇÃO: Diminuído o tamanho mínimo do vídeo para 200px */
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            flex-grow: 1;
+            padding: 1rem;
+            overflow-y: auto;
+        }
+        
+        .video-wrapper {
+            background-color: #202225;
+            border-radius: 0.5rem;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        video {
+            width: 100%;
+            height: auto;
+            transform: scaleX(-1); /* Espelha o vídeo local */
+        }
+
+        .remote-video {
+             transform: scaleX(1); /* Não espelha vídeos remotos */
+        }
+
+        .video-wrapper p {
+            padding: 0.5rem;
+            background-color: rgba(0,0,0,0.3);
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .control-panel {
+            background-color: #2f3136;
+            padding: 1rem;
+        }
+
+        .chat-box {
+            background-color: #40444b; /* Cor da caixa de texto do Discord */
+            border: none;
+            height: 120px;
+        }
+
+        .btn {
+            transition: background-color 0.3s;
+        }
+        .btn-mic-on { background-color: #3ba55d; }
+        .btn-mic-off { background-color: #ed4245; }
+        .btn-vid-on { background-color: #5865f2; }
+        .btn-vid-off { background-color: #ed4245; }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- Barra Lateral (simulada) -->
+        <aside class="sidebar p-2 flex flex-col items-center space-y-2">
+            <!-- Ícones de servidor podem ser adicionados aqui -->
+            <div class="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">TV</div>
+        </aside>
+
+        <!-- Conteúdo Principal -->
+        <div class="main-content">
+            <!-- Grelha de Vídeos -->
+            <main id="video-grid" class="video-container">
+                <!-- Vídeos serão adicionados aqui -->
+            </main>
+            <!-- Painel de Controlo e Chat -->
+            <footer class="control-panel">
+                <div id="chat-box" class="chat-box w-full p-2 mb-4 overflow-y-auto rounded-md">
+                    <p class="text-gray-400">Bem-vindo! As traduções aparecerão aqui.</p>
+                </div>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-4">
+                        <button id="toggle-mic" class="btn btn-mic-on text-white font-bold py-2 px-4 rounded">Microfone</button>
+                        <button id="toggle-video" class="btn btn-vid-on text-white font-bold py-2 px-4 rounded">Vídeo</button>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <label for="source-lang">Falar em:</label>
+                        <select id="source-lang" class="bg-gray-700 text-white rounded p-2"></select>
+                        <label for="dest-lang">Traduzir para:</label>
+                        <select id="dest-lang" class="bg-gray-700 text-white rounded p-2"></select>
+                    </div>
+                </div>
+            </footer>
+        </div>
+
+        <!-- Lista de Usuários (simulada) -->
+        <aside class="user-list p-4">
+            <h2 class="font-bold text-lg">Online</h2>
+            <!-- Nomes de usuários podem ser adicionados aqui -->
+        </aside>
+    </div>
+
+    <script>
+        const videoGrid = document.getElementById('video-grid');
+        const chatBox = document.getElementById('chat-box');
+        const toggleMicBtn = document.getElementById('toggle-mic');
+        const toggleVideoBtn = document.getElementById('toggle-video');
+        const sourceLangSelect = document.getElementById('source-lang');
+        const destLangSelect = document.getElementById('dest-lang');
+
+        let localStream;
+        let myUserId = 'user-' + Math.random().toString(36).substr(2, 9);
+        let peerConnections = {}; // Armazena as conexões P2P
+
+        // CORREÇÃO: O erro de segurança ("insecure WebSocket") acontece porque a página
+        // é carregada via HTTPS, mas tenta ligar-se a um WebSocket não seguro (ws://).
+        // Para corrigir, forçamos a ligação a ser segura (wss://) e apontamos para o
+        // servidor local, onde se espera que ele esteja a ser executado.
+        // NOTA: Para que isto funcione, o seu servidor Python também precisa de suportar ligações SSL/WSS.
+        const ws = new WebSocket(`wss://localhost:8080/ws`);
+
+        const iceServers = {
+            'iceServers': [
+                { 'urls': 'stun:stun.l.google.com:19302' }
+            ]
+        };
+
+        async function init() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                addVideoStream(myUserId, localStream, true);
+                setupUI();
+                setupWebSocket();
+                setupSpeechRecognition();
+            } catch (e) {
+                console.error('Erro ao acessar mídia:', e);
+                alert('Não foi possível acessar a câmera e o microfone. Verifique as permissões.');
+            }
+        }
+
+        function setupUI() {
+            toggleMicBtn.addEventListener('click', toggleMic);
+            toggleVideoBtn.addEventListener('click', toggleVideo);
+            populateLanguageSelects();
+        }
+
+        function setupWebSocket() {
+            ws.onopen = () => {
+                console.log('Conectado ao servidor WebSocket');
+                ws.send(JSON.stringify({ type: 'join', user_id: myUserId }));
+            };
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleSignalingData(data);
+            };
+            // Adicionado para dar feedback sobre erros de conexão
+            ws.onerror = (event) => {
+                console.error("Erro no WebSocket:", event);
+                chatBox.innerHTML += `<p class="text-red-400">Não foi possível ligar ao servidor WebSocket em wss://localhost:8080. Verifique se o servidor está a correr e configurado para SSL/WSS.</p>`;
+            }
+        }
+
+        function handleSignalingData(data) {
+            switch (data.type) {
+                case 'user-joined':
+                    createPeerConnection(data.user_id, true);
+                    break;
+                case 'existing-users':
+                    data.user_ids.forEach(userId => {
+                        if (userId !== myUserId) createPeerConnection(userId, false);
+                    });
+                    break;
+                case 'offer': handleOffer(data); break;
+                case 'answer': handleAnswer(data); break;
+                case 'candidate': handleCandidate(data); break;
+                case 'user-left': removeVideoStream(data.user_id); break;
+                case 'translation': displayTranslation(data); break;
+            }
+        }
+
+        function createPeerConnection(targetId, isOfferor) {
+            peerConnections[targetId] = new RTCPeerConnection(iceServers);
+            localStream.getTracks().forEach(track => {
+                peerConnections[targetId].addTrack(track, localStream);
+            });
+            peerConnections[targetId].ontrack = event => {
+                addVideoStream(targetId, event.streams[0]);
+            };
+            peerConnections[targetId].onicecandidate = event => {
+                if (event.candidate) {
+                    ws.send(JSON.stringify({ type: 'candidate', candidate: event.candidate, target_id: targetId, user_id: myUserId }));
+                }
+            };
+            if (isOfferor) {
+                peerConnections[targetId].createOffer()
+                    .then(offer => peerConnections[targetId].setLocalDescription(offer))
+                    .then(() => {
+                        ws.send(JSON.stringify({ type: 'offer', offer: peerConnections[targetId].localDescription, target_id: targetId, user_id: myUserId }));
+                    });
+            }
+        }
+
+        async function handleOffer(data) {
+            const pc = createPeerConnection(data.user_id, false);
+            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            ws.send(JSON.stringify({ type: 'answer', answer: pc.localDescription, target_id: data.user_id, user_id: myUserId }));
+        }
+
+        async function handleAnswer(data) {
+            await peerConnections[data.user_id].setRemoteDescription(new RTCSessionDescription(data.answer));
+        }
+
+        async function handleCandidate(data) {
+            await peerConnections[data.user_id].addIceCandidate(new RTCIceCandidate(data.candidate));
+        }
+
+        function setupSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                alert("Seu navegador não suporta a API de Reconhecimento de Voz.");
+                return;
+            }
+            const recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = false;
+            recognition.lang = sourceLangSelect.value;
+            recognition.onresult = (event) => {
+                const text = event.results[event.results.length - 1][0].transcript.trim();
+                if (text) {
+                    ws.send(JSON.stringify({ type: 'translate', text: text, user_id: myUserId, source_lang: sourceLangSelect.value, dest_lang: destLangSelect.value }));
+                }
+            };
+            recognition.onend = () => {
+                if (localStream.getAudioTracks()[0].enabled) {
+                    recognition.start();
+                }
+            };
+            recognition.start();
+            sourceLangSelect.onchange = () => {
+                recognition.lang = sourceLangSelect.value;
+            };
+        }
+
+        function addVideoStream(userId, stream, isLocal = false) {
+            if (document.getElementById('video-' + userId)) return;
+            const videoWrapper = document.createElement('div');
+            videoWrapper.id = 'video-' + userId;
+            videoWrapper.className = 'video-wrapper';
+            const video = document.createElement('video');
+            video.srcObject = stream;
+            video.autoplay = true;
+            video.playsInline = true;
+            video.muted = isLocal;
+            if (!isLocal) video.classList.add('remote-video');
+            const nameTag = document.createElement('p');
+            nameTag.textContent = isLocal ? 'Você' : userId;
+            videoWrapper.appendChild(video);
+            videoWrapper.appendChild(nameTag);
+            videoGrid.appendChild(videoWrapper);
+        }
+
+        function removeVideoStream(userId) {
+            const videoElement = document.getElementById('video-' + userId);
+            if (videoElement) videoElement.remove();
+            if (peerConnections[userId]) {
+                peerConnections[userId].close();
+                delete peerConnections[userId];
+            }
+        }
+
+        function toggleMic() {
+            const enabled = !localStream.getAudioTracks()[0].enabled;
+            localStream.getAudioTracks()[0].enabled = enabled;
+            toggleMicBtn.textContent = enabled ? 'Microfone' : 'Ativar Mic';
+            toggleMicBtn.classList.toggle('btn-mic-on', enabled);
+            toggleMicBtn.classList.toggle('btn-mic-off', !enabled);
+        }
+
+        function toggleVideo() {
+            const enabled = !localStream.getVideoTracks()[0].enabled;
+            localStream.getVideoTracks()[0].enabled = enabled;
+            toggleVideoBtn.textContent = enabled ? 'Vídeo' : 'Ativar Vídeo';
+            toggleVideoBtn.classList.toggle('btn-vid-on', enabled);
+            toggleVideoBtn.classList.toggle('btn-vid-off', !enabled);
+        }
+        
+        function displayTranslation(data) {
+            const messageEl = document.createElement('p');
+            messageEl.innerHTML = `<strong>${data.user_id}:</strong> ${data.original} <em class="text-gray-300">(${data.translated})</em>`;
+            chatBox.appendChild(messageEl);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function populateLanguageSelects() {
+            const languages = {
+                'pt-BR': 'Português (Brasil)', 'en-US': 'Inglês (EUA)', 'es-ES': 'Espanhol',
+                'fr-FR': 'Francês', 'de-DE': 'Alemão', 'it-IT': 'Italiano', 'ja-JP': 'Japonês',
+            };
+            for (const [code, name] of Object.entries(languages)) {
+                sourceLangSelect.options.add(new Option(name, code));
+                destLangSelect.options.add(new Option(name, code));
+            }
+            sourceLangSelect.value = 'pt-BR';
+            destLangSelect.value = 'en-US';
+        }
+
+        init();
+    </script>
+</body>
+</html>
