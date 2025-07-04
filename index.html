@@ -68,6 +68,15 @@
         #chat-panel {
             transition: transform 0.3s ease-in-out;
         }
+        /* Novo: Animação para o ícone do chat a piscar */
+        @keyframes blinking {
+            0% { color: white; }
+            50% { color: #3b82f6; } /* Cor azul para destaque */
+            100% { color: white; }
+        }
+        .blinking-icon {
+            animation: blinking 1.5s infinite;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white flex flex-col h-screen overflow-hidden">
@@ -238,7 +247,13 @@
                 </div>
             `;
             chatMessages.appendChild(messageElement);
-            chatMessages.scrollTop = chatMessages.scrollHeight; // Auto-scroll para a última mensagem
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            // Ativa a notificação a piscar se o chat estiver fechado
+            const chatPanel = document.getElementById('chat-panel');
+            if (!isLocal && chatPanel.classList.contains('translate-x-full')) {
+                document.getElementById('chat-btn').classList.add('blinking-icon');
+            }
         }
 
         function showFileNotification(text, id) {
@@ -657,6 +672,11 @@
         function toggleChatPanel() {
             const chatPanel = document.getElementById('chat-panel');
             chatPanel.classList.toggle('translate-x-full');
+
+            // Para a notificação a piscar quando o chat é aberto
+            if (!chatPanel.classList.contains('translate-x-full')) {
+                document.getElementById('chat-btn').classList.remove('blinking-icon');
+            }
         }
 
         document.addEventListener('DOMContentLoaded', () => {
