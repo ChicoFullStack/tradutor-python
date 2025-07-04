@@ -81,7 +81,17 @@
         let ws = null;
 
         async function start() {
-            pc = new RTCPeerConnection();
+            // *** A CORREÇÃO ESTÁ AQUI ***
+            // Configuração para incluir servidores STUN para atravessar NATs.
+            const configuration = {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                ]
+            };
+            pc = new RTCPeerConnection(configuration);
+            // ***************************
 
             // Manipulador para quando tracks remotas são recebidas
             pc.ontrack = (event) => {
@@ -97,7 +107,8 @@
 
             // Conecta ao servidor WebSocket
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            ws = new WebSocket(wsUrl);
 
             // Este manipulador agora apenas processa as respostas recebidas
             ws.onmessage = async (event) => {
@@ -235,3 +246,12 @@
     </script>
 </body>
 </html>
+```
+
+### Próximos Passos:
+
+1.  **Atualize o `index.html`:** Copie o conteúdo do Canvas acima e substitua o conteúdo do seu ficheiro `index.html` no seu repositório GitHub.
+2.  **Faça o Commit e Push:** Envie a alteração para o GitHub.
+3.  **Redeploy no Dokploy:** Vá ao seu painel Dokploy e clique no botão "Deploy" para que ele busque a versão mais recente do seu código.
+
+Após o novo deploy, a sua aplicação de videoconferência deverá funcionar corretamente, com todos os participantes a conseguirem ver-se uns aos outros, independentemente da rede em que se encontr
