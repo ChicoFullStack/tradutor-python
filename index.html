@@ -21,7 +21,7 @@
             height: 100vh;
             /* Em mobile, apenas a coluna principal é visível. Em ecrãs médios (md) para cima, o layout de 3 colunas é aplicado. */
             grid-template-columns: 1fr;
-            /* md:grid-template-columns: 72px 1fr 240px; */
+            /* md:grid-template-columns: 72px 1fr 240px; */ 
             grid-template-rows: 1fr;
         }
 
@@ -32,7 +32,7 @@
             height: 100vh;
             /* Garante que o conteúdo principal ocupe toda a coluna em mobile */
             grid-column: 1 / -1;
-            md:grid-column auto;
+            /* md:grid-column: auto; */
         }
 
         .video-container {
@@ -78,7 +78,7 @@
         .chat-box {
             background-color: #40444b; /* Cor da caixa de texto do Discord */
             border: none;
-            /* CORREÇÃO: Altura ajustada para melhor visualização em mobile */
+            /* Altura ajustada para melhor visualização em mobile */
             height: 90px; 
             flex-shrink: 0; /* Impede que a caixa de chat encolha */
         }
@@ -162,7 +162,7 @@
             console.log("Vozes disponíveis:", availableVoices);
         }
 
-        // CORREÇÃO: Função para desbloquear a síntese de voz no primeiro clique do utilizador
+        // CORREÇÃO: Função para desbloquear a síntese de voz. Será chamada por uma ação direta do utilizador.
         function unlockAudio() {
             if (isAudioUnlocked) return;
             // Toca um som vazio para ativar o contexto de áudio
@@ -170,16 +170,11 @@
             synth.speak(silentUtterance);
             isAudioUnlocked = true;
             console.log("Contexto de áudio desbloqueado.");
-            // Remove os listeners para que esta função não seja chamada novamente
-            document.body.removeEventListener('click', unlockAudio);
         }
 
 
         async function init() {
             try {
-                // CORREÇÃO: Adiciona um listener de clique no corpo do documento para desbloquear o áudio
-                document.body.addEventListener('click', unlockAudio, { once: true });
-
                 localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 addVideoStream(myUserId, localStream, true);
                 setupUI();
@@ -198,8 +193,15 @@
         }
 
         function setupUI() {
-            toggleMicBtn.addEventListener('click', toggleMic);
-            toggleVideoBtn.addEventListener('click', toggleVideo);
+            // CORREÇÃO: Adiciona a chamada para desbloquear o áudio nos botões
+            toggleMicBtn.addEventListener('click', () => {
+                unlockAudio();
+                toggleMic();
+            });
+            toggleVideoBtn.addEventListener('click', () => {
+                unlockAudio();
+                toggleVideo();
+            });
             populateLanguageSelects();
         }
 
@@ -351,6 +353,9 @@
             chatBox.scrollTop = chatBox.scrollHeight;
 
             if (data.user_id !== myUserId) {
+                // CORREÇÃO: Cancela a fala anterior para evitar sobreposição
+                synth.cancel(); 
+                
                 const utterance = new SpeechSynthesisUtterance(data.translated);
                 const targetLang = destLangSelect.value;
                 
