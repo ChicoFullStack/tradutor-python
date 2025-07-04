@@ -403,29 +403,37 @@
             statusIcon.title = 'Desconectado';
         }
         
+        // Função do microfone corrigida e mais robusta
         function toggleMic() { 
-            if (localStream) { 
-                const audioTrack = localStream.getAudioTracks()[0];
-                if (audioTrack) {
-                    audioTrack.enabled = !audioTrack.enabled;
-                    const isEnabled = audioTrack.enabled;
-                    
-                    document.getElementById('mic-on-icon').classList.toggle('hidden', !isEnabled);
-                    document.getElementById('mic-off-icon').classList.toggle('hidden', isEnabled);
-                    document.getElementById('mic-btn').classList.toggle('bg-red-500', !isEnabled);
-                    document.getElementById('mic-btn').classList.toggle('bg-gray-700', isEnabled);
+            if (!localStream || !localStream.getAudioTracks().length) {
+                console.warn("Nenhuma faixa de áudio local para silenciar.");
+                return;
+            }
+            
+            const audioTrack = localStream.getAudioTracks()[0];
+            
+            // Inverte o estado atual
+            audioTrack.enabled = !audioTrack.enabled;
+            const isMuted = !audioTrack.enabled; // isMuted é verdadeiro se a faixa estiver desativada
+            
+            // Atualiza a UI do botão de forma explícita
+            const micBtn = document.getElementById('mic-btn');
+            document.getElementById('mic-on-icon').classList.toggle('hidden', isMuted);
+            document.getElementById('mic-off-icon').classList.toggle('hidden', !isMuted);
+            micBtn.classList.toggle('bg-red-500', isMuted);
+            micBtn.classList.toggle('bg-gray-700', !isMuted);
 
-                    document.getElementById('container-local').classList.toggle('muted', !isEnabled);
+            // Atualiza o indicador de mudo no seu próprio vídeo
+            document.getElementById('container-local').classList.toggle('muted', isMuted);
 
-                    for (const peerId in peers) {
-                        sendMessage({
-                            type: 'mute_status',
-                            muted: !isEnabled,
-                            target: peerId
-                        });
-                    }
-                }
-            } 
+            // Notifica os outros sobre a mudança de estado
+            for (const peerId in peers) {
+                sendMessage({
+                    type: 'mute_status',
+                    muted: isMuted,
+                    target: peerId
+                });
+            }
         }
 
         function toggleVideo() { 
