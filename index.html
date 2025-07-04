@@ -16,15 +16,14 @@
             overflow: hidden;
         }
         
+        /* CORREÇÃO: Layout principal modificado para ser responsivo */
         .app-container {
             display: grid;
             height: 100vh;
-            grid-template-columns: 72px 1fr 240px; /* Sidebar | Conteúdo Principal | Lista de Usuários */
+            /* Em mobile, apenas a coluna principal é visível. Em ecrãs médios (md) para cima, o layout de 3 colunas é aplicado. */
+            grid-template-columns: 1fr;
+            md:grid-template-columns: 72px 1fr 240px;
             grid-template-rows: 1fr;
-        }
-
-        .sidebar {
-            background-color: #202225; /* Cor da barra de servidores */
         }
 
         .main-content {
@@ -32,11 +31,9 @@
             display: flex;
             flex-direction: column;
             height: 100vh;
-        }
-        
-        .user-list {
-            background-color: #2f3136; /* Cor da lista de usuários */
-            border-left: 1px solid #202225;
+            /* Garante que o conteúdo principal ocupe toda a coluna em mobile */
+            grid-column: 1 / -1;
+            md:grid-column: auto;
         }
 
         .video-container {
@@ -97,7 +94,8 @@
 
     <div class="app-container">
         <!-- Barra Lateral (simulada) -->
-        <aside class="sidebar p-2 flex flex-col items-center space-y-2">
+        <!-- CORREÇÃO: A barra lateral fica escondida em mobile (hidden) e aparece em ecrãs médios (md:flex) -->
+        <aside class="hidden md:flex sidebar p-2 flex-col items-center space-y-2">
             <!-- Ícones de servidor podem ser adicionados aqui -->
             <div class="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">TV</div>
         </aside>
@@ -113,12 +111,13 @@
                 <div id="chat-box" class="chat-box w-full p-2 mb-4 overflow-y-auto rounded-md">
                     <p class="text-gray-400">Bem-vindo! As traduções aparecerão aqui.</p>
                 </div>
-                <div class="flex items-center justify-between">
+                <!-- CORREÇÃO: Os controlos empilham em mobile (flex-col) e ficam lado a lado em desktop (md:flex-row) -->
+                <div class="flex flex-col md:flex-row items-center justify-between gap-4 md:gap-0">
                     <div class="flex items-center space-x-4">
                         <button id="toggle-mic" class="btn btn-mic-on text-white font-bold py-2 px-4 rounded">Microfone</button>
                         <button id="toggle-video" class="btn btn-vid-on text-white font-bold py-2 px-4 rounded">Vídeo</button>
                     </div>
-                    <div class="flex items-center space-x-2">
+                    <div class="flex flex-col sm:flex-row items-center gap-2 sm:space-x-2">
                         <label for="source-lang">Falar em:</label>
                         <select id="source-lang" class="bg-gray-700 text-white rounded p-2"></select>
                         <label for="dest-lang">Traduzir para:</label>
@@ -129,7 +128,8 @@
         </div>
 
         <!-- Lista de Usuários (simulada) -->
-        <aside class="user-list p-4">
+        <!-- CORREÇÃO: A lista de utilizadores fica escondida em mobile (hidden) e aparece em ecrãs médios (md:block) -->
+        <aside class="hidden md:block user-list p-4">
             <h2 class="font-bold text-lg">Online</h2>
             <!-- Nomes de usuários podem ser adicionados aqui -->
         </aside>
@@ -145,7 +145,7 @@
 
         let localStream;
         let myUserId = 'user-' + Math.random().toString(36).substr(2, 9);
-        let peerConnections = {}; // Armazena as conexões P2P
+        let peerConnections = {};
 
         const wsProtocol = 'wss:';
         const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
@@ -156,6 +156,14 @@
             ]
         };
 
+        const synth = window.speechSynthesis;
+        let availableVoices = [];
+
+        function loadVoices() {
+            availableVoices = synth.getVoices();
+            console.log("Vozes disponíveis:", availableVoices);
+        }
+
         async function init() {
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -163,9 +171,15 @@
                 setupUI();
                 setupWebSocket();
                 setupSpeechRecognition();
+                
+                loadVoices();
+                if (synth.onvoiceschanged !== undefined) {
+                    synth.onvoiceschanged = loadVoices;
+                }
+
             } catch (e) {
-                console.error('Erro ao acessar mídia:', e);
-                alert('Não foi possível acessar a câmera e o microfone. Verifique as permissões.');
+                console.error('Erro ao aceder à mídia:', e);
+                alert('Não foi possível aceder à câmara e ao microfone. Verifique as permissões.');
             }
         }
 
@@ -177,7 +191,7 @@
 
         function setupWebSocket() {
             ws.onopen = () => {
-                console.log('Conectado ao servidor WebSocket');
+                console.log('Ligado ao servidor WebSocket');
                 ws.send(JSON.stringify({ type: 'join', user_id: myUserId }));
             };
             ws.onmessage = (event) => {
@@ -249,7 +263,7 @@
         function setupSpeechRecognition() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (!SpeechRecognition) {
-                alert("Seu navegador não suporta a API de Reconhecimento de Voz.");
+                alert("O seu navegador não suporta a API de Reconhecimento de Voz.");
                 return;
             }
             const recognition = new SpeechRecognition();
@@ -322,12 +336,20 @@
             chatBox.appendChild(messageEl);
             chatBox.scrollTop = chatBox.scrollHeight;
 
-            // CORREÇÃO: Adicionada a funcionalidade de Síntese de Voz (Text-to-Speech)
-            // Não reproduz a própria tradução do usuário
             if (data.user_id !== myUserId) {
                 const utterance = new SpeechSynthesisUtterance(data.translated);
-                utterance.lang = destLangSelect.value; // Usa o idioma de destino selecionado
-                window.speechSynthesis.speak(utterance);
+                const targetLang = destLangSelect.value;
+                
+                const selectedVoice = availableVoices.find(voice => voice.lang === targetLang);
+
+                if (selectedVoice) {
+                    utterance.voice = selectedVoice;
+                } else {
+                    utterance.lang = targetLang;
+                    console.warn(`Nenhuma voz encontrada para ${targetLang}. Usando a voz padrão.`);
+                }
+                
+                synth.speak(utterance);
             }
         }
 
