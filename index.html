@@ -36,6 +36,10 @@
             <div class="flex items-center space-x-2">
                 <button id="mic-btn" title="Desativar o som" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="mic-on-icon" class="fas fa-microphone w-6 h-6"></i><i id="mic-off-icon" class="fas fa-microphone-slash w-6 h-6 hidden"></i></button>
                 <button id="video-btn" title="Parar vídeo" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="video-on-icon" class="fas fa-video w-6 h-6"></i><i id="video-off-icon" class="fas fa-video-slash w-6 h-6 hidden"></i></button>
+                <!-- Botão de Partilha de Ecrã Adicionado -->
+                <button id="screen-share-btn" title="Compartilhar tela" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3">
+                    <i class="fas fa-desktop w-6 h-6"></i>
+                </button>
             </div>
             <button id="leave-btn" title="Sair da chamada" class="bg-red-600 hover:bg-red-700 transition-colors rounded-full p-3 px-4"><i class="fas fa-phone-slash w-6 h-6"></i></button>
         </div>
@@ -43,6 +47,8 @@
 
     <script>
         let localStream = null;
+        let screenStream = null;
+        let isScreenSharing = false;
         let ws = null;
         const peers = {}; // Objeto para armazenar todas as conexões de pares
 
@@ -64,11 +70,7 @@
 
             pc.onicecandidate = (event) => {
                 if (event.candidate) {
-                    sendMessage({
-                        type: 'ice-candidate',
-                        candidate: event.candidate,
-                        target: targetId
-                    });
+                    sendMessage({ type: 'ice-candidate', candidate: event.candidate, target: targetId });
                 }
             };
 
@@ -89,7 +91,6 @@
 
             switch (data.type) {
                 case 'all_users':
-                    // Inicia a conexão com todos os utilizadores já na sala
                     for (const userId of data.users) {
                         const pc = createPeerConnection(userId);
                         const offer = await pc.createOffer();
@@ -98,11 +99,9 @@
                     }
                     break;
                 case 'user_joined':
-                    // Não é necessário criar a conexão aqui, o outro lado irá iniciar.
                     console.log(`Utilizador ${data.user_id} juntou-se.`);
                     break;
                 case 'offer':
-                    // Recebe uma oferta de um novo utilizador
                     const pc = createPeerConnection(data.sender);
                     await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
                     const answer = await pc.createAnswer();
@@ -110,19 +109,16 @@
                     sendMessage({ type: 'answer', answer: answer, target: data.sender });
                     break;
                 case 'answer':
-                    // Recebe uma resposta a uma oferta enviada
                     if (peers[data.sender]) {
                         await peers[data.sender].setRemoteDescription(new RTCSessionDescription(data.answer));
                     }
                     break;
                 case 'ice-candidate':
-                    // Recebe um candidato ICE
                     if (peers[data.sender]) {
                         await peers[data.sender].addIceCandidate(new RTCIceCandidate(data.candidate));
                     }
                     break;
                 case 'user_left':
-                    // Limpa a conexão e o vídeo de um utilizador que saiu
                     if (peers[data.user_id]) {
                         peers[data.user_id].close();
                         delete peers[data.user_id];
@@ -158,6 +154,63 @@
             ws.onerror = (err) => console.error("Erro no WebSocket:", err);
         }
 
+        // --- LÓGICA DE PARTILHA DE ECRÃ ---
+        async function toggleScreenShare() {
+            const screenShareBtn = document.getElementById('screen-share-btn');
+            if (!isScreenSharing) {
+                // Iniciar partilha de ecrã
+                try {
+                    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                    const screenTrack = screenStream.getVideoTracks()[0];
+
+                    // Substituir a track de vídeo em todas as conexões existentes
+                    for (const peerId in peers) {
+                        const sender = peers[peerId].getSenders().find(s => s.track && s.track.kind === 'video');
+                        if (sender) {
+                            await sender.replaceTrack(screenTrack);
+                        }
+                    }
+
+                    // Atualizar o vídeo local para mostrar o ecrã
+                    const localVideo = document.querySelector('#container-local video');
+                    localVideo.srcObject = screenStream;
+                    isScreenSharing = true;
+                    screenShareBtn.classList.replace('bg-gray-700', 'bg-blue-500');
+
+                    // Ouvir quando o utilizador para a partilha através do UI do navegador
+                    screenTrack.onended = () => {
+                        if (isScreenSharing) {
+                            toggleScreenShare();
+                        }
+                    };
+                } catch (err) {
+                    console.error("Erro ao iniciar a partilha de ecrã", err);
+                }
+            } else {
+                // Parar partilha de ecrã
+                const cameraTrack = localStream.getVideoTracks()[0];
+
+                // Substituir a track de volta para a câmara em todas as conexões
+                for (const peerId in peers) {
+                    const sender = peers[peerId].getSenders().find(s => s.track && s.track.kind === 'video');
+                    if (sender) {
+                        await sender.replaceTrack(cameraTrack);
+                    }
+                }
+
+                // Parar as tracks do stream do ecrã
+                screenStream.getTracks().forEach(track => track.stop());
+                screenStream = null;
+                isScreenSharing = false;
+
+                // Atualizar o vídeo local de volta para a câmara
+                const localVideo = document.querySelector('#container-local video');
+                localVideo.srcObject = localStream;
+                screenShareBtn.classList.replace('bg-blue-500', 'bg-gray-700');
+            }
+        }
+
+
         function createPlayerContainer(id, stream, name = `Remoto ${id.substring(0, 6)}`) {
             const videoGrid = document.getElementById('video-grid');
             const containerId = `container-${id}`;
@@ -185,23 +238,21 @@
 
         function leaveCall() {
             if (ws) ws.close();
-            for (const peerId in peers) {
-                peers[peerId].close();
-            }
+            for (const peerId in peers) { peers[peerId].close(); }
             if (localStream) localStream.getTracks().forEach(track => track.stop());
             document.getElementById('video-grid').innerHTML = '';
             window.location.reload();
         }
         
-        // Funções de toggle (sem alterações)
-        function toggleMic() { if (localStream) { localStream.getAudioTracks()[0].enabled = !localStream.getAudioTracks()[0].enabled; /* ... */ } }
-        function toggleVideo() { if (localStream) { localStream.getVideoTracks()[0].enabled = !localStream.getVideoTracks()[0].enabled; /* ... */ } }
+        function toggleMic() { if (localStream) { localStream.getAudioTracks()[0].enabled = !localStream.getAudioTracks()[0].enabled; } }
+        function toggleVideo() { if (localStream && !isScreenSharing) { localStream.getVideoTracks()[0].enabled = !localStream.getVideoTracks()[0].enabled; } }
 
         document.addEventListener('DOMContentLoaded', () => {
             start();
             document.getElementById('leave-btn').addEventListener('click', leaveCall);
             document.getElementById('mic-btn').addEventListener('click', toggleMic);
             document.getElementById('video-btn').addEventListener('click', toggleVideo);
+            document.getElementById('screen-share-btn').addEventListener('click', toggleScreenShare);
         });
     </script>
 </body>
