@@ -40,9 +40,9 @@
         }
         /* Estilos para os ícones/miniaturas */
         .thumbnail {
-            width: 100%;
-            height: 120px; /* Altura fixa para evitar esticamento */
-            flex-shrink: 0; /* Evita que a miniatura encolha */
+            width: 100%; /* A largura será controlada pelo contentor pai */
+            aspect-ratio: 16 / 9;
+            border: 2px solid transparent;
         }
         .thumbnail .participant-name {
             font-size: 0.7rem;
@@ -200,31 +200,22 @@
                     screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" }, audio: false });
                     const screenTrack = screenStream.getVideoTracks()[0];
                     
-                    // --- LÓGICA DE LAYOUT REFEITA ---
-                    const remoteContainers = Array.from(document.querySelectorAll('.video-player-container:not(#container-local)'));
-
-                    videoGrid.innerHTML = ''; // Limpa a grelha completamente
-                    videoGrid.className = 'flex-grow flex flex-row p-4 gap-4'; // Define o novo layout flexível
-
-                    // Cria o palco principal para a partilha de ecrã
-                    const mainStage = document.createElement('div');
-                    mainStage.className = 'flex-grow h-full';
-                    mainStage.appendChild(localContainer);
+                    // Mudar layout para o modo de partilha
+                    videoGrid.className = 'flex-grow flex flex-row p-4 gap-4';
                     
-                    // Cria a barra lateral para as miniaturas
                     const thumbnailBar = document.createElement('div');
                     thumbnailBar.id = 'thumbnail-bar';
-                    thumbnailBar.className = 'w-1/4 lg:w-1/5 flex-shrink-0 flex flex-col gap-4 overflow-y-auto';
+                    thumbnailBar.className = 'w-1/4 flex-shrink-0 flex flex-col gap-4 overflow-y-auto';
                     
-                    // Move os contentores remotos para a barra de miniaturas
-                    remoteContainers.forEach(container => {
+                    // Mover outros participantes para a barra de miniaturas
+                    document.querySelectorAll('.video-player-container:not(#container-local)').forEach(container => {
                         container.classList.add('thumbnail');
                         thumbnailBar.appendChild(container);
                     });
 
-                    // Adiciona o palco principal e a barra de miniaturas à grelha
-                    videoGrid.appendChild(mainStage);
+                    // Adicionar a barra de miniaturas à grelha principal
                     videoGrid.appendChild(thumbnailBar);
+                    localContainer.classList.add('flex-grow'); // Fazer o ecrã partilhado crescer
                     
                     for (const peerId in peers) {
                         const sender = peers[peerId].getSenders().find(s => s.track && s.track.kind === 'video');
@@ -243,20 +234,18 @@
                 }
             } else {
                 const cameraTrack = localStream.getVideoTracks()[0];
-                const remoteContainers = Array.from(document.querySelectorAll('#thumbnail-bar .video-player-container'));
+                const thumbnailBar = document.getElementById('thumbnail-bar');
 
                 // Reverter layout para a grelha
-                videoGrid.innerHTML = ''; // Limpa a grelha
+                if (thumbnailBar) {
+                    thumbnailBar.querySelectorAll('.video-player-container').forEach(container => {
+                        container.classList.remove('thumbnail');
+                        videoGrid.appendChild(container);
+                    });
+                    thumbnailBar.remove();
+                }
                 videoGrid.className = 'flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto';
-                
-                // Adiciona o vídeo local de volta
-                videoGrid.appendChild(localContainer);
-                
-                // Adiciona os vídeos remotos de volta
-                remoteContainers.forEach(container => {
-                    container.classList.remove('thumbnail');
-                    videoGrid.appendChild(container);
-                });
+                localContainer.classList.remove('flex-grow');
 
                 for (const peerId in peers) {
                     const sender = peers[peerId].getSenders().find(s => s.track && s.track.kind === 'video');
@@ -307,26 +296,40 @@
             }
         }
 
+        // FUNÇÃO CORRIGIDA
         function leaveCall() {
+            // 1. Fecha a conexão WebSocket. Isso irá notificar os outros utilizadores.
             if (ws) {
                 ws.close();
                 ws = null;
             }
+
+            // 2. Fecha todas as conexões de pares
             for (const peerId in peers) {
                 if(peers[peerId]) {
                     peers[peerId].close();
                 }
             }
+            // Limpa o objeto de pares
             Object.keys(peers).forEach(key => delete peers[key]);
+
+
+            // 3. Para as faixas de mídia locais
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
                 localStream = null;
             }
+            
+            // 4. Limpa a UI e mostra uma mensagem de saída
             document.getElementById('video-grid').innerHTML = '<div class="text-center text-gray-400 col-span-full">Você saiu da chamada.</div>';
+
+            // 5. Desativa os botões de controlo
             document.getElementById('mic-btn').disabled = true;
             document.getElementById('video-btn').disabled = true;
             document.getElementById('screen-share-btn').disabled = true;
             document.getElementById('leave-btn').disabled = true;
+            
+            // Altera o ícone de status da conexão
             const statusIcon = document.getElementById('connection-status');
             statusIcon.classList.replace('text-green-500', 'text-red-500');
             statusIcon.title = 'Desconectado';
