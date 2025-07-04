@@ -12,15 +12,42 @@
     <style>
         body { font-family: 'Inter', sans-serif; -ms-overflow-style: none; scrollbar-width: none; }
         body::-webkit-scrollbar { display: none; }
-        .video-player-container { position: relative; aspect-ratio: 16 / 9; background-color: #2d3748; border-radius: 0.5rem; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+        .video-player-container { 
+            position: relative; 
+            background-color: #2d3748; 
+            border-radius: 0.5rem; 
+            overflow: hidden; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            transition: all 0.3s ease-in-out;
+        }
         .video-player { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
         .remote-video { transform: scaleX(1); }
-        /* Adicionado para não espelhar e enquadrar a partilha de ecrã */
         .video-player.no-mirror {
             transform: scaleX(1);
             object-fit: contain; /* Garante que todo o conteúdo do ecrã é visível */
         }
-        .participant-name { position: absolute; bottom: 0; left: 0; background-color: rgba(0, 0, 0, 0.5); padding: 0.25rem 0.75rem; border-top-right-radius: 0.5rem; font-size: 0.875rem; }
+        .participant-name { 
+            position: absolute; 
+            bottom: 0; 
+            left: 0; 
+            background-color: rgba(0, 0, 0, 0.5); 
+            padding: 0.25rem 0.75rem; 
+            border-top-right-radius: 0.5rem; 
+            font-size: 0.875rem; 
+            transition: all 0.3s ease-in-out;
+        }
+        /* Estilos para os ícones/miniaturas */
+        .thumbnail {
+            width: 140px;
+            height: 78px;
+            border: 2px solid transparent;
+        }
+        .thumbnail .participant-name {
+            font-size: 0.7rem;
+            padding: 1px 4px;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white flex flex-col h-screen overflow-hidden">
@@ -41,7 +68,6 @@
             <div class="flex items-center space-x-2">
                 <button id="mic-btn" title="Desativar o som" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="mic-on-icon" class="fas fa-microphone w-6 h-6"></i><i id="mic-off-icon" class="fas fa-microphone-slash w-6 h-6 hidden"></i></button>
                 <button id="video-btn" title="Parar vídeo" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="video-on-icon" class="fas fa-video w-6 h-6"></i><i id="video-off-icon" class="fas fa-video-slash w-6 h-6 hidden"></i></button>
-                <!-- Botão de Partilha de Ecrã Adicionado -->
                 <button id="screen-share-btn" title="Compartilhar tela" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3">
                     <i class="fas fa-desktop w-6 h-6"></i>
                 </button>
@@ -55,7 +81,7 @@
         let screenStream = null;
         let isScreenSharing = false;
         let ws = null;
-        const peers = {}; // Objeto para armazenar todas as conexões de pares
+        const peers = {};
 
         const configuration = {
             iceServers: [
@@ -159,94 +185,78 @@
             ws.onerror = (err) => console.error("Erro no WebSocket:", err);
         }
 
-        // --- LÓGICA DE PARTILHA DE ECRÃ ---
         async function toggleScreenShare() {
             const screenShareBtn = document.getElementById('screen-share-btn');
             const videoGrid = document.getElementById('video-grid');
             const localContainer = document.getElementById('container-local');
 
             if (!isScreenSharing) {
-                // Iniciar partilha de ecrã
                 try {
                     screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" }, audio: false });
                     const screenTrack = screenStream.getVideoTracks()[0];
                     
-                    // Mudar layout para destacar o ecrã partilhado
-                    videoGrid.classList.remove('grid', 'grid-cols-1', 'sm:grid-cols-2', 'md:grid-cols-3', 'lg:grid-cols-4');
-                    videoGrid.classList.add('flex', 'flex-col', 'lg:flex-row');
+                    // Mudar layout para o modo de partilha
+                    videoGrid.className = 'flex items-center justify-center p-4'; // Centraliza o ecrã principal
                     
-                    const thumbnailContainer = document.createElement('div');
-                    thumbnailContainer.id = 'thumbnails';
-                    thumbnailContainer.className = 'flex flex-row lg:flex-col lg:w-1/5 order-last lg:order-first gap-2 p-2 overflow-auto';
-                    
+                    const thumbnailBar = document.createElement('div');
+                    thumbnailBar.id = 'thumbnail-bar';
+                    thumbnailBar.className = 'fixed bottom-24 left-1/2 -translate-x-1/2 z-10 flex gap-3 p-2 bg-gray-900/70 backdrop-blur-sm rounded-full';
+                    document.body.appendChild(thumbnailBar);
+
+                    // Mover outros participantes para a barra de miniaturas
                     document.querySelectorAll('.video-player-container:not(#container-local)').forEach(container => {
-                        thumbnailContainer.appendChild(container);
+                        container.classList.add('thumbnail');
+                        thumbnailBar.appendChild(container);
                     });
-                    videoGrid.insertBefore(thumbnailContainer, videoGrid.firstChild);
-                    localContainer.classList.add('flex-grow');
 
-
-                    // Substituir a track de vídeo em todas as conexões existentes
+                    // Fazer o ecrã partilhado ocupar o espaço principal
+                    videoGrid.appendChild(localContainer);
+                    
                     for (const peerId in peers) {
                         const sender = peers[peerId].getSenders().find(s => s.track && s.track.kind === 'video');
-                        if (sender) {
-                            await sender.replaceTrack(screenTrack);
-                        }
+                        if (sender) await sender.replaceTrack(screenTrack);
                     }
 
-                    // Atualizar o vídeo local para mostrar o ecrã
                     const localVideo = document.querySelector('#container-local video');
                     localVideo.srcObject = screenStream;
-                    localVideo.classList.add('no-mirror'); // Para não espelhar o ecrã
+                    localVideo.classList.add('no-mirror');
                     isScreenSharing = true;
                     screenShareBtn.classList.replace('bg-gray-700', 'bg-blue-500');
 
-                    // Ouvir quando o utilizador para a partilha através do UI do navegador
-                    screenTrack.onended = () => {
-                        if (isScreenSharing) {
-                            toggleScreenShare();
-                        }
-                    };
+                    screenTrack.onended = () => { if (isScreenSharing) toggleScreenShare(); };
                 } catch (err) {
                     console.error("Erro ao iniciar a partilha de ecrã", err);
                 }
             } else {
-                // Parar partilha de ecrã
                 const cameraTrack = localStream.getVideoTracks()[0];
+                const thumbnailBar = document.getElementById('thumbnail-bar');
 
-                // Reverter layout para a grelha normal
-                const thumbnailContainer = document.getElementById('thumbnails');
-                if (thumbnailContainer) {
-                    thumbnailContainer.querySelectorAll('.video-player-container').forEach(container => {
+                // Reverter layout para a grelha
+                if (thumbnailBar) {
+                    thumbnailBar.querySelectorAll('.video-player-container').forEach(container => {
+                        container.classList.remove('thumbnail');
                         videoGrid.appendChild(container);
                     });
-                    thumbnailContainer.remove();
+                    thumbnailBar.remove();
                 }
-                videoGrid.classList.add('grid', 'grid-cols-1', 'sm:grid-cols-2', 'md:grid-cols-3', 'lg:grid-cols-4');
-                videoGrid.classList.remove('flex', 'flex-col', 'lg:flex-row');
-                localContainer.classList.remove('flex-grow');
+                videoGrid.className = 'flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto';
+                videoGrid.insertBefore(localContainer, videoGrid.firstChild);
 
-                // Substituir a track de volta para a câmara em todas as conexões
                 for (const peerId in peers) {
                     const sender = peers[peerId].getSenders().find(s => s.track && s.track.kind === 'video');
-                    if (sender) {
-                        await sender.replaceTrack(cameraTrack);
-                    }
+                    if (sender) await sender.replaceTrack(cameraTrack);
                 }
 
-                // Parar as tracks do stream do ecrã
-                screenStream.getTracks().forEach(track => track.stop());
+                if (screenStream) screenStream.getTracks().forEach(track => track.stop());
                 screenStream = null;
                 isScreenSharing = false;
 
-                // Atualizar o vídeo local de volta para a câmara
                 const localVideo = document.querySelector('#container-local video');
                 localVideo.srcObject = localStream;
                 localVideo.classList.remove('no-mirror');
                 screenShareBtn.classList.replace('bg-blue-500', 'bg-gray-700');
             }
         }
-
 
         function createPlayerContainer(id, stream, name = `Remoto ${id.substring(0, 6)}`) {
             const videoGrid = document.getElementById('video-grid');
@@ -270,7 +280,15 @@
 
             container.appendChild(videoElement);
             container.appendChild(nameElement);
-            videoGrid.appendChild(container);
+
+            // Adicionar novo participante ao local correto (grelha ou miniaturas)
+            const thumbnailBar = document.getElementById('thumbnail-bar');
+            if (isScreenSharing && thumbnailBar) {
+                container.classList.add('thumbnail');
+                thumbnailBar.appendChild(container);
+            } else {
+                videoGrid.appendChild(container);
+            }
         }
 
         function leaveCall() {
