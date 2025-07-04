@@ -21,13 +21,13 @@
             align-items: center; 
             justify-content: center; 
             transition: all 0.3s ease-in-out;
-            cursor: pointer; /* Adiciona cursor de ponteiro para indicar que é clicável */
+            cursor: pointer;
         }
         .video-player { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
         .remote-video { transform: scaleX(1); }
         .video-player.no-mirror {
             transform: scaleX(1);
-            object-fit: contain; /* Garante que todo o conteúdo do ecrã é visível */
+            object-fit: contain;
         }
         .participant-name { 
             position: absolute; 
@@ -39,22 +39,19 @@
             font-size: 0.875rem; 
             transition: all 0.3s ease-in-out;
         }
-        /* Estilos para os ícones/miniaturas */
         .thumbnail {
             width: 100%;
-            height: 120px; /* Altura fixa para evitar esticamento */
-            flex-shrink: 0; /* Evita que a miniatura encolha */
+            height: 120px;
+            flex-shrink: 0;
         }
         .thumbnail .participant-name {
             font-size: 0.7rem;
             padding: 1px 4px;
         }
-        /* Estilo para botões desativados */
         button:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
-        /* Novo: Estilo para o ícone de mudo no vídeo */
         .mute-indicator {
             position: absolute;
             top: 0.5rem;
@@ -62,40 +59,42 @@
             background-color: rgba(0, 0, 0, 0.5);
             border-radius: 50%;
             padding: 0.5rem;
-            display: none; /* Escondido por padrão */
+            display: none;
         }
         .video-player-container.muted .mute-indicator {
-            display: flex; /* Mostra quando o contentor tem a classe 'muted' */
+            display: flex;
         }
     </style>
 </head>
 <body class="bg-gray-900 text-white flex flex-col h-screen overflow-hidden">
 
+    <!-- Alterado: Controlos movidos para o cabeçalho -->
     <header class="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-700">
-        <div class="flex items-center space-x-2">
+        <div class="flex items-center space-x-2 w-1/3">
             <i class="fas fa-video text-blue-400 text-xl"></i>
             <span class="text-lg font-semibold">ConnectSphere</span>
         </div>
-        <h1 class="text-xl font-bold">Sala Principal</h1>
-        <div class="flex items-center space-x-6 text-gray-400">
+
+        <!-- Botões de Controlo Centrais -->
+        <div class="flex items-center justify-center space-x-2 w-1/3">
+            <button id="mic-btn" title="Desativar o som" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="mic-on-icon" class="fas fa-microphone w-6 h-6"></i><i id="mic-off-icon" class="fas fa-microphone-slash w-6 h-6 hidden"></i></button>
+            <button id="video-btn" title="Parar vídeo" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="video-on-icon" class="fas fa-video w-6 h-6"></i><i id="video-off-icon" class="fas fa-video-slash w-6 h-6 hidden"></i></button>
+            <button id="screen-share-btn" title="Compartilhar tela" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3">
+                <i class="fas fa-desktop w-6 h-6"></i>
+            </button>
+            <div class="w-px h-6 bg-gray-600 mx-2"></div> <!-- Separador visual -->
+            <button id="leave-btn" title="Sair da chamada" class="bg-red-600 hover:bg-red-700 transition-colors rounded-full p-3 px-4"><i class="fas fa-phone-slash w-6 h-6"></i></button>
+        </div>
+
+        <div class="flex items-center justify-end space-x-6 text-gray-400 w-1/3">
             <i id="connection-status" class="fas fa-circle text-red-500" title="Desconectado"></i>
         </div>
     </header>
-    <!-- Alterado: Adicionado padding inferior para não ser sobreposto pelo footer fixo -->
-    <main id="video-grid" class="flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto pb-24"></main>
-    <!-- Alterado: Posição fixa para manter os controlos sempre visíveis -->
-    <footer class="fixed bottom-0 left-0 right-0 z-20 p-4">
-        <div class="max-w-2xl mx-auto bg-gray-800/80 backdrop-blur-sm rounded-full flex items-center justify-between p-2 shadow-lg">
-            <div class="flex items-center space-x-2">
-                <button id="mic-btn" title="Desativar o som" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="mic-on-icon" class="fas fa-microphone w-6 h-6"></i><i id="mic-off-icon" class="fas fa-microphone-slash w-6 h-6 hidden"></i></button>
-                <button id="video-btn" title="Parar vídeo" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="video-on-icon" class="fas fa-video w-6 h-6"></i><i id="video-off-icon" class="fas fa-video-slash w-6 h-6 hidden"></i></button>
-                <button id="screen-share-btn" title="Compartilhar tela" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3">
-                    <i class="fas fa-desktop w-6 h-6"></i>
-                </button>
-            </div>
-            <button id="leave-btn" title="Sair da chamada" class="bg-red-600 hover:bg-red-700 transition-colors rounded-full p-3 px-4"><i class="fas fa-phone-slash w-6 h-6"></i></button>
-        </div>
-    </footer>
+    
+    <!-- Alterado: Padding inferior removido -->
+    <main id="video-grid" class="flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto"></main>
+    
+    <!-- Removido: O footer já não é necessário -->
 
     <script>
         let localStream = null;
@@ -222,7 +221,7 @@
             if (pinnedUserId === userIdToPin) {
                 pinnedUserId = null;
                 videoGrid.innerHTML = '';
-                videoGrid.className = 'flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto pb-24';
+                videoGrid.className = 'flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto';
                 allContainers.forEach(container => {
                     container.classList.remove('thumbnail');
                     videoGrid.appendChild(container);
@@ -235,7 +234,7 @@
             const remoteContainers = allContainers.filter(c => c.id !== `container-${userIdToPin}`);
 
             videoGrid.innerHTML = '';
-            videoGrid.className = 'flex-grow flex flex-row p-4 gap-4 pb-24';
+            videoGrid.className = 'flex-grow flex flex-row p-4 gap-4';
 
             const mainStage = document.createElement('div');
             mainStage.className = 'flex-grow h-full';
@@ -270,7 +269,7 @@
                     
                     const remoteContainers = Array.from(document.querySelectorAll('.video-player-container:not(#container-local)'));
                     videoGrid.innerHTML = '';
-                    videoGrid.className = 'flex-grow flex flex-row p-4 gap-4 pb-24';
+                    videoGrid.className = 'flex-grow flex flex-row p-4 gap-4';
 
                     const mainStage = document.createElement('div');
                     mainStage.className = 'flex-grow h-full';
@@ -313,7 +312,7 @@
                 const remoteContainers = Array.from(document.querySelectorAll('#thumbnail-bar .video-player-container'));
 
                 videoGrid.innerHTML = '';
-                videoGrid.className = 'flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto pb-24';
+                videoGrid.className = 'flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto';
                 
                 localContainer.classList.remove('thumbnail');
                 videoGrid.appendChild(localContainer);
