@@ -15,6 +15,8 @@
         .video-player-container { position: relative; aspect-ratio: 16 / 9; background-color: #2d3748; border-radius: 0.5rem; overflow: hidden; display: flex; align-items: center; justify-content: center; }
         .video-player { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
         .remote-video { transform: scaleX(1); }
+        /* Adicionado para não espelhar a partilha de ecrã */
+        .video-player.no-mirror { transform: scaleX(1); }
         .participant-name { position: absolute; bottom: 0; left: 0; background-color: rgba(0, 0, 0, 0.5); padding: 0.25rem 0.75rem; border-top-right-radius: 0.5rem; font-size: 0.875rem; }
     </style>
 </head>
@@ -157,11 +159,29 @@
         // --- LÓGICA DE PARTILHA DE ECRÃ ---
         async function toggleScreenShare() {
             const screenShareBtn = document.getElementById('screen-share-btn');
+            const videoGrid = document.getElementById('video-grid');
+            const localContainer = document.getElementById('container-local');
+
             if (!isScreenSharing) {
                 // Iniciar partilha de ecrã
                 try {
-                    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" }, audio: false });
                     const screenTrack = screenStream.getVideoTracks()[0];
+                    
+                    // Mudar layout para destacar o ecrã partilhado
+                    videoGrid.classList.remove('grid', 'grid-cols-1', 'sm:grid-cols-2', 'md:grid-cols-3', 'lg:grid-cols-4');
+                    videoGrid.classList.add('flex', 'flex-col', 'lg:flex-row');
+                    
+                    const thumbnailContainer = document.createElement('div');
+                    thumbnailContainer.id = 'thumbnails';
+                    thumbnailContainer.className = 'flex flex-row lg:flex-col lg:w-1/5 order-last lg:order-first gap-2 p-2 overflow-auto';
+                    
+                    document.querySelectorAll('.video-player-container:not(#container-local)').forEach(container => {
+                        thumbnailContainer.appendChild(container);
+                    });
+                    videoGrid.insertBefore(thumbnailContainer, videoGrid.firstChild);
+                    localContainer.classList.add('flex-grow');
+
 
                     // Substituir a track de vídeo em todas as conexões existentes
                     for (const peerId in peers) {
@@ -174,6 +194,7 @@
                     // Atualizar o vídeo local para mostrar o ecrã
                     const localVideo = document.querySelector('#container-local video');
                     localVideo.srcObject = screenStream;
+                    localVideo.classList.add('no-mirror'); // Para não espelhar o ecrã
                     isScreenSharing = true;
                     screenShareBtn.classList.replace('bg-gray-700', 'bg-blue-500');
 
@@ -189,6 +210,18 @@
             } else {
                 // Parar partilha de ecrã
                 const cameraTrack = localStream.getVideoTracks()[0];
+
+                // Reverter layout para a grelha normal
+                const thumbnailContainer = document.getElementById('thumbnails');
+                if (thumbnailContainer) {
+                    thumbnailContainer.querySelectorAll('.video-player-container').forEach(container => {
+                        videoGrid.appendChild(container);
+                    });
+                    thumbnailContainer.remove();
+                }
+                videoGrid.classList.add('grid', 'grid-cols-1', 'sm:grid-cols-2', 'md:grid-cols-3', 'lg:grid-cols-4');
+                videoGrid.classList.remove('flex', 'flex-col', 'lg:flex-row');
+                localContainer.classList.remove('flex-grow');
 
                 // Substituir a track de volta para a câmara em todas as conexões
                 for (const peerId in peers) {
@@ -206,6 +239,7 @@
                 // Atualizar o vídeo local de volta para a câmara
                 const localVideo = document.querySelector('#container-local video');
                 localVideo.srcObject = localStream;
+                localVideo.classList.remove('no-mirror');
                 screenShareBtn.classList.replace('bg-blue-500', 'bg-gray-700');
             }
         }
@@ -244,8 +278,32 @@
             window.location.reload();
         }
         
-        function toggleMic() { if (localStream) { localStream.getAudioTracks()[0].enabled = !localStream.getAudioTracks()[0].enabled; } }
-        function toggleVideo() { if (localStream && !isScreenSharing) { localStream.getVideoTracks()[0].enabled = !localStream.getVideoTracks()[0].enabled; } }
+        function toggleMic() { 
+            if (localStream) { 
+                const audioTrack = localStream.getAudioTracks()[0];
+                if (audioTrack) {
+                    audioTrack.enabled = !audioTrack.enabled;
+                    const isEnabled = audioTrack.enabled;
+                    document.getElementById('mic-on-icon').classList.toggle('hidden', !isEnabled);
+                    document.getElementById('mic-off-icon').classList.toggle('hidden', isEnabled);
+                    document.getElementById('mic-btn').classList.toggle('bg-red-500', !isEnabled);
+                    document.getElementById('mic-btn').classList.toggle('bg-gray-700', isEnabled);
+                }
+            } 
+        }
+        function toggleVideo() { 
+            if (localStream && !isScreenSharing) { 
+                const videoTrack = localStream.getVideoTracks()[0];
+                if (videoTrack) {
+                    videoTrack.enabled = !videoTrack.enabled;
+                    const isEnabled = videoTrack.enabled;
+                    document.getElementById('video-on-icon').classList.toggle('hidden', !isEnabled);
+                    document.getElementById('video-off-icon').classList.toggle('hidden', isEnabled);
+                    document.getElementById('video-btn').classList.toggle('bg-red-500', !isEnabled);
+                    document.getElementById('video-btn').classList.toggle('bg-gray-700', isEnabled);
+                }
+            } 
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             start();
