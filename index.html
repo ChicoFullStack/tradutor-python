@@ -54,6 +54,19 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+        /* Novo: Estilo para o ícone de mudo no vídeo */
+        .mute-indicator {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background-color: rgba(0, 0, 0, 0.5);
+            border-radius: 50%;
+            padding: 0.5rem;
+            display: none; /* Escondido por padrão */
+        }
+        .video-player-container.muted .mute-indicator {
+            display: flex; /* Mostra quando o contentor tem a classe 'muted' */
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white flex flex-col h-screen overflow-hidden">
@@ -156,6 +169,12 @@
                         await peers[data.sender].addIceCandidate(new RTCIceCandidate(data.candidate));
                     }
                     break;
+                case 'mute_status':
+                    const muteContainer = document.getElementById(`container-${data.sender}`);
+                    if (muteContainer) {
+                        muteContainer.classList.toggle('muted', data.muted);
+                    }
+                    break;
                 case 'user_left':
                     if (peers[data.user_id]) {
                         peers[data.user_id].close();
@@ -192,14 +211,12 @@
             ws.onerror = (err) => console.error("Erro no WebSocket:", err);
         }
 
-        // --- NOVA LÓGICA DE LAYOUT ---
         function pinParticipant(userIdToPin) {
-            if (isScreenSharing) return; // Não permite fixar durante a partilha de ecrã
+            if (isScreenSharing) return;
 
             const videoGrid = document.getElementById('video-grid');
             const allContainers = Array.from(document.querySelectorAll('.video-player-container'));
 
-            // Se o utilizador clicado já estiver fixado, volta à vista de grelha
             if (pinnedUserId === userIdToPin) {
                 pinnedUserId = null;
                 videoGrid.innerHTML = '';
@@ -215,7 +232,6 @@
             const pinnedContainer = document.getElementById(`container-${userIdToPin}`);
             const remoteContainers = allContainers.filter(c => c.id !== `container-${userIdToPin}`);
 
-            // Limpa e reconfigura o layout para a vista de destaque
             videoGrid.innerHTML = '';
             videoGrid.className = 'flex-grow flex flex-row p-4 gap-4';
 
@@ -241,7 +257,6 @@
             const videoGrid = document.getElementById('video-grid');
             const localContainer = document.getElementById('container-local');
 
-            // Se um utilizador estiver fixado, desfixa-o antes de iniciar a partilha
             if (pinnedUserId) {
                 pinParticipant(pinnedUserId); 
             }
@@ -284,7 +299,12 @@
 
                     screenTrack.onended = () => { if (isScreenSharing) toggleScreenShare(); };
                 } catch (err) {
-                    console.error("Erro ao iniciar a partilha de ecrã", err);
+                    console.error("Erro ao iniciar a partilha de ecrã:", err);
+                    if (err.name === 'NotAllowedError') {
+                        alert('A permissão para partilhar o ecrã foi negada. Verifique as permissões do seu navegador. Se estiver num iframe, a política de segurança pode estar a bloquear esta funcionalidade.');
+                    } else {
+                        alert('Ocorreu um erro desconhecido ao tentar iniciar a partilha de ecrã.');
+                    }
                 }
             } else {
                 const cameraTrack = localStream.getVideoTracks()[0];
@@ -325,7 +345,6 @@
             const container = document.createElement('div');
             container.id = containerId;
             container.className = 'video-player-container';
-            // Adiciona o evento de clique para fixar/desfixar
             container.onclick = () => pinParticipant(id);
             
             const videoElement = document.createElement('video');
@@ -339,12 +358,16 @@
             nameElement.className = 'participant-name';
             nameElement.innerText = name;
 
+            const muteIndicator = document.createElement('div');
+            muteIndicator.className = 'mute-indicator';
+            muteIndicator.innerHTML = `<i class="fas fa-microphone-slash text-white text-xs"></i>`;
+
             container.appendChild(videoElement);
             container.appendChild(nameElement);
+            container.appendChild(muteIndicator);
 
-            // Adicionar novo participante ao local correto (grelha ou miniaturas)
             if (pinnedUserId) {
-                const thumbnailBar = document.querySelector('.w-1/4, .w-1/5'); // Encontra a barra de miniaturas
+                const thumbnailBar = document.querySelector('.w-1/4, .w-1/5');
                 if (thumbnailBar) {
                     container.classList.add('thumbnail');
                     thumbnailBar.appendChild(container);
@@ -385,13 +408,25 @@
                 if (audioTrack) {
                     audioTrack.enabled = !audioTrack.enabled;
                     const isEnabled = audioTrack.enabled;
+                    
                     document.getElementById('mic-on-icon').classList.toggle('hidden', !isEnabled);
                     document.getElementById('mic-off-icon').classList.toggle('hidden', isEnabled);
                     document.getElementById('mic-btn').classList.toggle('bg-red-500', !isEnabled);
                     document.getElementById('mic-btn').classList.toggle('bg-gray-700', isEnabled);
+
+                    document.getElementById('container-local').classList.toggle('muted', !isEnabled);
+
+                    for (const peerId in peers) {
+                        sendMessage({
+                            type: 'mute_status',
+                            muted: !isEnabled,
+                            target: peerId
+                        });
+                    }
                 }
             } 
         }
+
         function toggleVideo() { 
             if (localStream && !isScreenSharing) { 
                 const videoTrack = localStream.getVideoTracks()[0];
