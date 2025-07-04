@@ -21,7 +21,7 @@
             height: 100vh;
             /* Em mobile, apenas a coluna principal é visível. Em ecrãs médios (md) para cima, o layout de 3 colunas é aplicado. */
             grid-template-columns: 1fr;
-            md:grid-template-columns: 72px 1fr 240px;
+            /* md:grid-template-columns: 72px 1fr 240px; */
             grid-template-rows: 1fr;
         }
 
@@ -32,7 +32,7 @@
             height: 100vh;
             /* Garante que o conteúdo principal ocupe toda a coluna em mobile */
             grid-column: 1 / -1;
-            md:grid-column: auto;
+            md:grid-column auto;
         }
 
         .video-container {
@@ -84,7 +84,7 @@
         }
 
         .btn {
-            transition: background-color: 0.3s;
+            transition: background-color 0.3s;
         }
         .btn-mic-on { background-color: #3ba55d; }
         .btn-mic-off { background-color: #ed4245; }
