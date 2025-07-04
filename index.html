@@ -64,6 +64,10 @@
         .video-player-container.muted .mute-indicator {
             display: flex;
         }
+        .video-player-container.hand-raised .hand-raised-indicator {
+            display: flex;
+            right: 2.5rem; /* Posição ajustada para não sobrepor o ícone de mudo */
+        }
         #chat-panel, #participants-panel, #whiteboard-panel {
             transition: transform 0.3s ease-in-out;
         }
@@ -88,27 +92,19 @@
             animation: float-up 2s ease-out forwards;
             pointer-events: none;
         }
+        /* Estilos do Quadro Branco */
         #whiteboard-canvas {
             cursor: crosshair;
             touch-action: none;
-        }
-        .connection-status-overlay {
-            position: absolute;
-            inset: 0;
-            background-color: rgba(0, 0, 0, 0.6);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.875rem;
-            color: #cbd5e1;
-            text-transform: capitalize;
         }
     </style>
 </head>
 <body class="bg-gray-900 text-white flex flex-col h-screen overflow-hidden">
 
     <div id="entry-modal" class="fixed inset-0 bg-gray-900 z-50 flex items-center justify-center">
-        <div id="lobby-view" class="bg-gray-800 p-8 rounded-lg shadow-xl text-center w-full max-w-md"></div>
+        <div id="lobby-view" class="bg-gray-800 p-8 rounded-lg shadow-xl text-center w-full max-w-md">
+            <!-- Conteúdo será preenchido pelo JavaScript -->
+        </div>
     </div>
 
     <header class="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-700">
@@ -257,8 +253,6 @@
                     displayEmojiOnVideo(senderId, message.emoji);
                 } else if (message.type === 'whiteboard') {
                     handleWhiteboardDraw(message.data);
-                } else if (message.type === 'whiteboard_state') {
-                    setWhiteboardState(message.state === 'open');
                 }
             } catch (e) {
                 const fileInfo = Object.values(fileBuffers).find(f => !f.blob);
@@ -427,34 +421,10 @@
 
         function createPeerConnection(targetId) {
             const pc = new RTCPeerConnection(configuration);
-            
-            peers[targetId] = {
-                pc: pc,
-                iceCandidates: [],
-                name: `Remoto ${targetId.substring(0, 6)}`,
-                muted: false,
-                handRaised: false
-            };
 
             pc.onicecandidate = (event) => {
                 if (event.candidate) {
                     sendMessage({ type: 'ice-candidate', candidate: event.candidate, target: targetId });
-                }
-            };
-
-            pc.onconnectionstatechange = () => {
-                const state = pc.connectionState;
-                const container = document.getElementById(`container-${targetId}`);
-                if (container) {
-                    const statusDiv = container.querySelector('.connection-status-overlay');
-                    if (statusDiv) {
-                        statusDiv.textContent = state;
-                        if (state === 'connected') {
-                            statusDiv.classList.add('hidden');
-                        } else {
-                            statusDiv.classList.remove('hidden');
-                        }
-                    }
                 }
             };
 
@@ -474,71 +444,59 @@
             };
             dataChannel.onmessage = (e) => handleDataChannelMessage(e, targetId);
             
+            peers[targetId] = pc;
             peers[targetId].dataChannel = dataChannel;
             
-            if (localStream) {
-                localStream.getTracks().forEach(track => {
-                    pc.addTrack(track, localStream);
-                });
-            }
+            localStream.getTracks().forEach(track => {
+                pc.addTrack(track, localStream);
+            });
 
             return pc;
         }
 
         async function handleWebSocketMessages(message) {
             const data = JSON.parse(message.data);
-            const senderId = data.sender;
-            let pc;
 
             switch (data.type) {
                 case 'all_users':
                     for (const userId of data.users) {
-                        pc = createPeerConnection(userId);
+                        const pc = createPeerConnection(userId);
                         const offer = await pc.createOffer();
                         await pc.setLocalDescription(offer);
-                        sendMessage({ type: 'offer', offer: pc.localDescription, target: userId });
+                        sendMessage({ type: 'offer', offer: offer, target: userId });
                     }
                     updateParticipantList();
                     break;
                 case 'user_joined':
+                    console.log(`Utilizador ${data.user_id} juntou-se.`);
                     updateParticipantList();
                     break;
                 case 'offer':
-                    pc = createPeerConnection(senderId);
+                    const pc = createPeerConnection(data.sender);
                     await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
                     const answer = await pc.createAnswer();
                     await pc.setLocalDescription(answer);
-                    sendMessage({ type: 'answer', answer: pc.localDescription, target: senderId });
+                    sendMessage({ type: 'answer', answer: answer, target: data.sender });
                     break;
                 case 'answer':
-                    pc = peers[senderId]?.pc;
-                    if (pc) {
-                        await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-                        peers[senderId].iceCandidates.forEach(candidate => {
-                            pc.addIceCandidate(new RTCIceCandidate(candidate));
-                        });
-                        peers[senderId].iceCandidates = [];
+                    if (peers[data.sender]) {
+                        await peers[data.sender].setRemoteDescription(new RTCSessionDescription(data.answer));
                     }
                     break;
                 case 'ice-candidate':
-                    pc = peers[senderId]?.pc;
-                    if (pc) {
-                        if (pc.remoteDescription) {
-                            await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-                        } else {
-                            peers[senderId].iceCandidates.push(data.candidate);
-                        }
+                    if (peers[data.sender]) {
+                        await peers[data.sender].addIceCandidate(new RTCIceCandidate(data.candidate));
                     }
                     break;
                 case 'mute_status':
-                    if (peers[senderId]) {
-                        peers[senderId].muted = data.muted;
+                    if (peers[data.sender]) {
+                        peers[data.sender].muted = data.muted;
                         updateParticipantList();
                     }
                     break;
                 case 'user_left':
                     if (peers[data.user_id]) {
-                        peers[data.user_id].pc.close();
+                        peers[data.user_id].close();
                         delete peers[data.user_id];
                     }
                     const videoContainer = document.getElementById(`container-${data.user_id}`);
@@ -654,7 +612,7 @@
                     videoGrid.appendChild(thumbnailBar);
                     
                     for (const peerId in peers) {
-                        const sender = peers[peerId].pc.getSenders().find(s => s.track && s.track.kind === 'video');
+                        const sender = peers[peerId].getSenders().find(s => s.track && s.track.kind === 'video');
                         if (sender) await sender.replaceTrack(screenTrack);
                     }
 
@@ -689,7 +647,7 @@
                 });
 
                 for (const peerId in peers) {
-                    const sender = peers[peerId].pc.getSenders().find(s => s.track && s.track.kind === 'video');
+                    const sender = peers[peerId].getSenders().find(s => s.track && s.track.kind === 'video');
                     if (sender) await sender.replaceTrack(cameraTrack);
                 }
 
@@ -729,16 +687,9 @@
             muteIndicator.className = 'mute-indicator';
             muteIndicator.innerHTML = `<i class="fas fa-microphone-slash text-white text-xs"></i>`;
 
-            const statusOverlay = document.createElement('div');
-            statusOverlay.className = 'connection-status-overlay';
-            statusOverlay.textContent = 'Connecting...';
-            
             container.appendChild(videoElement);
             container.appendChild(nameElement);
             container.appendChild(muteIndicator);
-            if (id !== 'local') {
-                container.appendChild(statusOverlay);
-            }
 
             if (pinnedUserId) {
                 const thumbnailBar = document.querySelector('.w-1/4, .w-1/5');
@@ -759,7 +710,7 @@
             }
             for (const peerId in peers) {
                 if(peers[peerId]) {
-                    peers[peerId].pc.close();
+                    peers[peerId].close();
                 }
             }
             Object.keys(peers).forEach(key => delete peers[key]);
@@ -1012,11 +963,14 @@
             });
 
             document.getElementById('whiteboard-btn').addEventListener('click', () => {
-                toggleWhiteboardPanel();
+                document.getElementById('whiteboard-panel').classList.remove('hidden');
+                document.getElementById('whiteboard-panel').classList.add('flex');
+                initWhiteboard();
             });
 
             document.getElementById('close-whiteboard-btn').addEventListener('click', () => {
-                toggleWhiteboardPanel();
+                document.getElementById('whiteboard-panel').classList.add('hidden');
+                document.getElementById('whiteboard-panel').classList.remove('flex');
             });
             
             document.getElementById('clear-whiteboard-btn').addEventListener('click', () => {
@@ -1032,39 +986,9 @@
             });
         });
 
-        function setWhiteboardState(isOpen) {
-            const whiteboardPanel = document.getElementById('whiteboard-panel');
-            const isHidden = whiteboardPanel.classList.contains('hidden');
-
-            if (isOpen && isHidden) {
-                whiteboardPanel.classList.remove('hidden');
-                whiteboardPanel.classList.add('flex');
-                initWhiteboard();
-            } else if (!isOpen && !isHidden) {
-                whiteboardPanel.classList.add('hidden');
-                whiteboardPanel.classList.remove('flex');
-            }
-        }
-
-        function toggleWhiteboardPanel() {
-            const whiteboardPanel = document.getElementById('whiteboard-panel');
-            const isOpen = whiteboardPanel.classList.contains('hidden');
-            setWhiteboardState(isOpen);
-
-            for (const peerId in peers) {
-                sendMessage({
-                    type: 'whiteboard_state',
-                    state: isOpen ? 'open' : 'closed',
-                    target: peerId
-                });
-            }
-        }
-
+        // --- LÓGICA DO QUADRO BRANCO ---
         function initWhiteboard() {
             const canvas = document.getElementById('whiteboard-canvas');
-            if (canvas.dataset.initialized) return;
-            canvas.dataset.initialized = true;
-
             whiteboardCtx = canvas.getContext('2d');
             
             const resizeCanvas = () => {
@@ -1108,7 +1032,7 @@
                     to: { x: pos.x, y: pos.y },
                     color: drawColor
                 };
-                handleWhiteboardDraw(drawData);
+                handleWhiteboardDraw(drawData); // Desenha localmente
                 for (const peerId in peers) {
                     sendMessage({ type: 'whiteboard', data: drawData, target: peerId });
                 }
@@ -1129,9 +1053,7 @@
         }
 
         function handleWhiteboardDraw(data) {
-            if (!whiteboardCtx) {
-                setWhiteboardState(true);
-            }
+            if (!whiteboardCtx) return;
             if (data.type === 'draw') {
                 whiteboardCtx.beginPath();
                 whiteboardCtx.strokeStyle = data.color;
