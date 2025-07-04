@@ -81,8 +81,10 @@
             <i id="connection-status" class="fas fa-circle text-red-500" title="Desconectado"></i>
         </div>
     </header>
-    <main id="video-grid" class="flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto"></main>
-    <footer class="flex-shrink-0 p-4">
+    <!-- Alterado: Adicionado padding inferior para não ser sobreposto pelo footer fixo -->
+    <main id="video-grid" class="flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto pb-24"></main>
+    <!-- Alterado: Posição fixa para manter os controlos sempre visíveis -->
+    <footer class="fixed bottom-0 left-0 right-0 z-20 p-4">
         <div class="max-w-2xl mx-auto bg-gray-800/80 backdrop-blur-sm rounded-full flex items-center justify-between p-2 shadow-lg">
             <div class="flex items-center space-x-2">
                 <button id="mic-btn" title="Desativar o som" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="mic-on-icon" class="fas fa-microphone w-6 h-6"></i><i id="mic-off-icon" class="fas fa-microphone-slash w-6 h-6 hidden"></i></button>
@@ -220,7 +222,7 @@
             if (pinnedUserId === userIdToPin) {
                 pinnedUserId = null;
                 videoGrid.innerHTML = '';
-                videoGrid.className = 'flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto';
+                videoGrid.className = 'flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto pb-24';
                 allContainers.forEach(container => {
                     container.classList.remove('thumbnail');
                     videoGrid.appendChild(container);
@@ -233,7 +235,7 @@
             const remoteContainers = allContainers.filter(c => c.id !== `container-${userIdToPin}`);
 
             videoGrid.innerHTML = '';
-            videoGrid.className = 'flex-grow flex flex-row p-4 gap-4';
+            videoGrid.className = 'flex-grow flex flex-row p-4 gap-4 pb-24';
 
             const mainStage = document.createElement('div');
             mainStage.className = 'flex-grow h-full';
@@ -268,7 +270,7 @@
                     
                     const remoteContainers = Array.from(document.querySelectorAll('.video-player-container:not(#container-local)'));
                     videoGrid.innerHTML = '';
-                    videoGrid.className = 'flex-grow flex flex-row p-4 gap-4';
+                    videoGrid.className = 'flex-grow flex flex-row p-4 gap-4 pb-24';
 
                     const mainStage = document.createElement('div');
                     mainStage.className = 'flex-grow h-full';
@@ -311,7 +313,7 @@
                 const remoteContainers = Array.from(document.querySelectorAll('#thumbnail-bar .video-player-container'));
 
                 videoGrid.innerHTML = '';
-                videoGrid.className = 'flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto';
+                videoGrid.className = 'flex-grow p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto pb-24';
                 
                 localContainer.classList.remove('thumbnail');
                 videoGrid.appendChild(localContainer);
