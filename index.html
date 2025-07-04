@@ -68,7 +68,7 @@
             display: flex;
             right: 2.5rem; /* Posição ajustada para não sobrepor o ícone de mudo */
         }
-        #chat-panel, #participants-panel {
+        #chat-panel, #participants-panel, #whiteboard-panel {
             transition: transform 0.3s ease-in-out;
         }
         @keyframes blinking {
@@ -92,11 +92,15 @@
             animation: float-up 2s ease-out forwards;
             pointer-events: none;
         }
+        /* Estilos do Quadro Branco */
+        #whiteboard-canvas {
+            cursor: crosshair;
+            touch-action: none;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white flex flex-col h-screen overflow-hidden">
 
-    <!-- Modal de Entrada/Lobby -->
     <div id="entry-modal" class="fixed inset-0 bg-gray-900 z-50 flex items-center justify-center">
         <div id="lobby-view" class="bg-gray-800 p-8 rounded-lg shadow-xl text-center w-full max-w-md">
             <!-- Conteúdo será preenchido pelo JavaScript -->
@@ -125,6 +129,7 @@
             </div>
             <button id="participants-btn" title="Ver participantes" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-users w-6 h-6"></i></button>
             <button id="chat-btn" title="Abrir chat" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-comments w-6 h-6"></i></button>
+            <button id="whiteboard-btn" title="Abrir quadro branco" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-chalkboard w-6 h-6"></i></button>
             <button id="file-share-btn" title="Partilhar ficheiro" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-paperclip w-6 h-6"></i></button>
             <button id="downloads-btn" title="Ver ficheiros recebidos" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-download w-6 h-6"></i></button>
             <div class="w-px h-6 bg-gray-600 mx-2"></div>
@@ -177,6 +182,21 @@
             </button>
         </div>
     </div>
+    
+    <div id="whiteboard-panel" class="fixed inset-0 bg-gray-800 bg-opacity-95 z-40 hidden flex-col">
+        <div id="whiteboard-toolbar" class="flex-shrink-0 p-2 bg-gray-900 flex items-center justify-center space-x-4">
+            <div class="flex items-center space-x-2">
+                <span>Cor:</span>
+                <input type="color" id="color-picker" value="#FFFFFF">
+            </div>
+            <button id="clear-whiteboard-btn" class="px-3 py-1 bg-red-600 rounded">Limpar Tudo</button>
+            <button id="close-whiteboard-btn" class="absolute top-2 right-4 text-gray-400 hover:text-white text-2xl">&times;</button>
+        </div>
+        <div class="flex-grow w-full h-full p-4">
+            <canvas id="whiteboard-canvas"></canvas>
+        </div>
+    </div>
+
 
     <script>
         let localUserName = '';
@@ -190,6 +210,12 @@
         const peers = {};
         const fileBuffers = {};
         const receivedFiles = [];
+        
+        let isDrawing = false;
+        let whiteboardCtx;
+        let lastX = 0;
+        let lastY = 0;
+        let drawColor = '#FFFFFF';
 
         const configuration = {
             iceServers: [
@@ -225,6 +251,8 @@
                     }
                 } else if (message.type === 'emoji_reaction') {
                     displayEmojiOnVideo(senderId, message.emoji);
+                } else if (message.type === 'whiteboard') {
+                    handleWhiteboardDraw(message.data);
                 }
             } catch (e) {
                 const fileInfo = Object.values(fileBuffers).find(f => !f.blob);
@@ -323,7 +351,7 @@
                 container.appendChild(emojiElement);
                 setTimeout(() => {
                     emojiElement.remove();
-                }, 2000); // Remove o emoji após a animação
+                }, 2000);
             }
         }
 
@@ -834,7 +862,6 @@
             const roomParam = urlParams.get('room');
 
             if (roomParam) {
-                // Vista de "Juntar-se à Sala"
                 lobbyView.innerHTML = `
                     <h2 class="text-2xl font-bold mb-4">Juntar-se à Sala: ${roomParam}</h2>
                     <p class="text-gray-400 mb-6">Insira o seu nome para continuar.</p>
@@ -852,7 +879,6 @@
                     }
                 });
             } else {
-                // Vista de "Criar Sala"
                 lobbyView.innerHTML = `
                     <h2 class="text-2xl font-bold mb-4">Bem-vindo ao ConnectSphere</h2>
                     <p class="text-gray-400 mb-6">Crie uma nova sala de reunião e convide outros.</p>
@@ -935,7 +961,110 @@
                     alert('Link do convite copiado para a área de transferência!');
                 });
             });
+
+            document.getElementById('whiteboard-btn').addEventListener('click', () => {
+                document.getElementById('whiteboard-panel').classList.remove('hidden');
+                document.getElementById('whiteboard-panel').classList.add('flex');
+                initWhiteboard();
+            });
+
+            document.getElementById('close-whiteboard-btn').addEventListener('click', () => {
+                document.getElementById('whiteboard-panel').classList.add('hidden');
+                document.getElementById('whiteboard-panel').classList.remove('flex');
+            });
+            
+            document.getElementById('clear-whiteboard-btn').addEventListener('click', () => {
+                const data = { type: 'clear' };
+                handleWhiteboardDraw(data); // Limpa localmente
+                for (const peerId in peers) {
+                    sendMessage({ type: 'whiteboard', data: data, target: peerId });
+                }
+            });
+
+            document.getElementById('color-picker').addEventListener('change', (e) => {
+                drawColor = e.target.value;
+            });
         });
+
+        // --- LÓGICA DO QUADRO BRANCO ---
+        function initWhiteboard() {
+            const canvas = document.getElementById('whiteboard-canvas');
+            whiteboardCtx = canvas.getContext('2d');
+            
+            const resizeCanvas = () => {
+                const parent = canvas.parentElement;
+                canvas.width = parent.clientWidth;
+                canvas.height = parent.clientHeight;
+                whiteboardCtx.lineJoin = 'round';
+                whiteboardCtx.lineCap = 'round';
+                whiteboardCtx.lineWidth = 5;
+            };
+
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            const getPos = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                return {
+                    x: (clientX - rect.left) * scaleX,
+                    y: (clientY - rect.top) * scaleY
+                };
+            };
+
+            const startDrawing = (e) => {
+                e.preventDefault();
+                isDrawing = true;
+                const pos = getPos(e);
+                [lastX, lastY] = [pos.x, pos.y];
+            };
+
+            const draw = (e) => {
+                e.preventDefault();
+                if (!isDrawing) return;
+                const pos = getPos(e);
+                const drawData = {
+                    type: 'draw',
+                    from: { x: lastX, y: lastY },
+                    to: { x: pos.x, y: pos.y },
+                    color: drawColor
+                };
+                handleWhiteboardDraw(drawData); // Desenha localmente
+                for (const peerId in peers) {
+                    sendMessage({ type: 'whiteboard', data: drawData, target: peerId });
+                }
+                [lastX, lastY] = [pos.x, pos.y];
+            };
+
+            const stopDrawing = () => {
+                isDrawing = false;
+            };
+
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDrawing);
+            canvas.addEventListener('mouseout', stopDrawing);
+            canvas.addEventListener('touchstart', startDrawing);
+            canvas.addEventListener('touchmove', draw);
+            canvas.addEventListener('touchend', stopDrawing);
+        }
+
+        function handleWhiteboardDraw(data) {
+            if (!whiteboardCtx) return;
+            if (data.type === 'draw') {
+                whiteboardCtx.beginPath();
+                whiteboardCtx.strokeStyle = data.color;
+                whiteboardCtx.moveTo(data.from.x, data.from.y);
+                whiteboardCtx.lineTo(data.to.x, data.to.y);
+                whiteboardCtx.stroke();
+            } else if (data.type === 'clear') {
+                whiteboardCtx.clearRect(0, 0, whiteboardCtx.canvas.width, whiteboardCtx.canvas.height);
+            }
+        }
+
     </script>
 </body>
 </html>
