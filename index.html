@@ -207,7 +207,8 @@
             if (!notification) {
                 notification = document.createElement('div');
                 notification.id = `file-${id}`;
-                notification.className = 'bg-gray-700 p-3 rounded-lg shadow-lg text-sm transition-all';
+                // Adicionado transition-opacity e duration para o efeito de fade-out
+                notification.className = 'bg-gray-700 p-3 rounded-lg shadow-lg text-sm transition-opacity duration-500';
                 panel.appendChild(notification);
             }
             notification.innerHTML = `
@@ -221,11 +222,27 @@
             `;
         }
 
+        function hideNotification(notificationId, delay) {
+            setTimeout(() => {
+                const notification = document.getElementById(notificationId);
+                if (notification) {
+                    notification.classList.add('opacity-0'); // Inicia o fade-out
+                    // Remove o elemento do DOM após a transição
+                    setTimeout(() => notification.remove(), 500); 
+                }
+            }, delay);
+        }
+
         function updateFileProgress(id, progress, finished = false) {
             const progressBar = document.getElementById(`bar-${id}`);
             const progressText = document.getElementById(`progress-${id}`);
             if (progressBar) progressBar.style.width = `${progress}%`;
             if (progressText) progressText.innerText = finished ? 'Concluído' : `${progress}%`;
+            
+            // Se o envio terminou, recolhe a notificação após 5 segundos
+            if (finished) {
+                hideNotification(`file-${id}`, 5000);
+            }
         }
         
         function showDownloadLink(fileInfo) {
@@ -237,6 +254,8 @@
                         <span class="truncate">Recebeu ${fileInfo.metadata.name}</span>
                         <a href="${url}" download="${fileInfo.metadata.name}" class="ml-2 px-2 py-1 bg-green-500 rounded text-xs">Descarregar</a>
                     </div>`;
+                // Recolhe a notificação de download após 15 segundos
+                hideNotification(notification.id, 15000);
             }
         }
 
@@ -255,18 +274,16 @@
                 createPlayerContainer(targetId, event.streams[0]);
             };
             
-            // Lida com o canal de dados criado pelo outro par
             pc.ondatachannel = (event) => {
                 const dataChannel = event.channel;
                 dataChannel.onmessage = handleDataChannelMessage;
                 peers[targetId].dataChannel = dataChannel;
             };
 
-            // Cria o canal de dados para este par
             const dataChannel = pc.createDataChannel('fileTransfer');
             dataChannel.onmessage = handleDataChannelMessage;
             peers[targetId] = pc;
-            peers[targetId].dataChannel = dataChannel; // Armazena a referência
+            peers[targetId].dataChannel = dataChannel;
             
             localStream.getTracks().forEach(track => {
                 pc.addTrack(track, localStream);
