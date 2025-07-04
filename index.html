@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Videochamada Web com Tradução</title>
+    <!-- Adicionado um ícone SVG embutido para evitar o erro 404 do favicon.ico -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📺</text></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* Estilo para um tema escuro e moderno inspirado no Discord */
@@ -145,10 +147,7 @@
         let myUserId = 'user-' + Math.random().toString(36).substr(2, 9);
         let peerConnections = {}; // Armazena as conexões P2P
 
-        // CORREÇÃO: O endereço do WebSocket é agora dinâmico.
-        // Ele determina o protocolo (ws:// ou wss://) e o host (ex: boloko.cloud)
-        // a partir do URL atual do navegador.
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsProtocol = 'wss:';
         const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
 
         const iceServers = {
@@ -322,6 +321,14 @@
             messageEl.innerHTML = `<strong>${data.user_id}:</strong> ${data.original} <em class="text-gray-300">(${data.translated})</em>`;
             chatBox.appendChild(messageEl);
             chatBox.scrollTop = chatBox.scrollHeight;
+
+            // CORREÇÃO: Adicionada a funcionalidade de Síntese de Voz (Text-to-Speech)
+            // Não reproduz a própria tradução do usuário
+            if (data.user_id !== myUserId) {
+                const utterance = new SpeechSynthesisUtterance(data.translated);
+                utterance.lang = destLangSelect.value; // Usa o idioma de destino selecionado
+                window.speechSynthesis.speak(utterance);
+            }
         }
 
         function populateLanguageSelects() {
