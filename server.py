@@ -64,9 +64,16 @@ async def index(request):
     with open(os.path.join(ROOT, "index.html"), "r") as f:
         return web.Response(text=f.read(), content_type="text/html")
 
+async def favicon(request):
+    """Serve uma resposta vazia para o favicon para evitar erros 404 no console."""
+    return web.Response(status=204)
+
 if __name__ == "__main__":
     app = web.Application()
     app.router.add_get("/", index)
     app.router.add_get("/ws", websocket_handler)
+    # Adiciona a rota para o favicon
+    app.router.add_get("/favicon.ico", favicon)
+    
     print("Servidor iniciado em http://localhost:8080")
     web.run_app(app, access_log=None, host="0.0.0.0", port=8080)
