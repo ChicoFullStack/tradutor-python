@@ -22,7 +22,7 @@
             justify-content: center; 
             transition: all 0.3s ease-in-out;
             cursor: pointer;
-            aspect-ratio: 16 / 9; /* Força a proporção de 16:9 em todas as vistas */
+            aspect-ratio: 16 / 9;
         }
         .video-player { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
         .remote-video { transform: scaleX(1); }
@@ -42,7 +42,7 @@
         }
         .thumbnail {
             width: 100%;
-            flex-shrink: 0; /* Evita que a miniatura encolha */
+            flex-shrink: 0;
         }
         .thumbnail .participant-name {
             font-size: 0.7rem;
@@ -64,6 +64,10 @@
         .video-player-container.muted .mute-indicator {
             display: flex;
         }
+        /* Estilos do Painel de Chat */
+        #chat-panel {
+            transition: transform 0.3s ease-in-out;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white flex flex-col h-screen overflow-hidden">
@@ -74,19 +78,13 @@
             <span class="text-lg font-semibold">ConnectSphere</span>
         </div>
 
-        <div class="flex items-center justify-center space-x-2 w-1/3">
+        <div class="flex items-center justify-center space-x-2">
             <button id="mic-btn" title="Desativar o som" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="mic-on-icon" class="fas fa-microphone w-6 h-6"></i><i id="mic-off-icon" class="fas fa-microphone-slash w-6 h-6 hidden"></i></button>
             <button id="video-btn" title="Parar vídeo" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i id="video-on-icon" class="fas fa-video w-6 h-6"></i><i id="video-off-icon" class="fas fa-video-slash w-6 h-6 hidden"></i></button>
-            <button id="screen-share-btn" title="Compartilhar tela" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3">
-                <i class="fas fa-desktop w-6 h-6"></i>
-            </button>
-            <button id="file-share-btn" title="Partilhar ficheiro" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3">
-                <i class="fas fa-paperclip w-6 h-6"></i>
-            </button>
-            <!-- Novo: Botão para ver os downloads -->
-            <button id="downloads-btn" title="Ver ficheiros recebidos" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3">
-                <i class="fas fa-download w-6 h-6"></i>
-            </button>
+            <button id="screen-share-btn" title="Compartilhar tela" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-desktop w-6 h-6"></i></button>
+            <button id="file-share-btn" title="Partilhar ficheiro" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-paperclip w-6 h-6"></i></button>
+            <button id="chat-btn" title="Abrir chat" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-comments w-6 h-6"></i></button>
+            <button id="downloads-btn" title="Ver ficheiros recebidos" class="control-btn bg-gray-700 hover:bg-gray-600 transition-colors rounded-full p-3"><i class="fas fa-download w-6 h-6"></i></button>
             <div class="w-px h-6 bg-gray-600 mx-2"></div>
             <button id="leave-btn" title="Sair da chamada" class="bg-red-600 hover:bg-red-700 transition-colors rounded-full p-3 px-4"><i class="fas fa-phone-slash w-6 h-6"></i></button>
         </div>
@@ -102,17 +100,29 @@
 
     <div id="file-transfer-panel" class="fixed bottom-4 right-4 w-80 space-y-2 z-30"></div>
 
-    <!-- Novo: Modal de Downloads -->
     <div id="downloads-modal" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden items-center justify-center">
         <div class="bg-gray-800 rounded-lg shadow-xl w-full max-w-lg p-6">
             <div class="flex items-center justify-between mb-4">
                 <h3 class="text-xl font-semibold">Ficheiros Recebidos</h3>
                 <button id="close-modal-btn" class="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
             </div>
-            <div id="downloads-list" class="space-y-2 max-h-80 overflow-y-auto">
-                <!-- A lista de ficheiros será inserida aqui -->
-            </div>
+            <div id="downloads-list" class="space-y-2 max-h-80 overflow-y-auto"></div>
         </div>
+    </div>
+
+    <!-- Novo: Painel de Chat -->
+    <div id="chat-panel" class="fixed top-0 right-0 h-full w-80 bg-gray-800 shadow-lg z-50 transform translate-x-full flex flex-col">
+        <div class="flex items-center justify-between p-4 border-b border-gray-700">
+            <h3 class="text-xl font-semibold">Chat da Reunião</h3>
+            <button id="close-chat-btn" class="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+        </div>
+        <div id="chat-messages" class="flex-grow p-4 space-y-4 overflow-y-auto">
+            <!-- Mensagens do chat serão inseridas aqui -->
+        </div>
+        <form id="chat-form" class="p-4 border-t border-gray-700 flex items-center">
+            <input type="text" id="chat-input" class="w-full bg-gray-700 rounded-l-md p-2 focus:outline-none" placeholder="Escreva uma mensagem...">
+            <button type="submit" class="bg-blue-600 hover:bg-blue-700 rounded-r-md p-2 px-4"><i class="fas fa-paper-plane"></i></button>
+        </form>
     </div>
 
     <script>
@@ -123,7 +133,7 @@
         let ws = null;
         const peers = {};
         const fileBuffers = {};
-        const receivedFiles = []; // Armazena os ficheiros recebidos com sucesso
+        const receivedFiles = [];
 
         const configuration = {
             iceServers: [
@@ -138,27 +148,23 @@
             }
         }
 
-        // --- LÓGICA DE PARTILHA DE FICHEIROS ---
-        function handleDataChannelMessage(event) {
+        // --- LÓGICA DE PARTILHA DE FICHEIROS E CHAT ---
+        function handleDataChannelMessage(event, senderId) {
             try {
                 const message = JSON.parse(event.data);
                 if (message.type === 'metadata') {
-                    fileBuffers[message.name] = {
-                        chunks: [],
-                        receivedSize: 0,
-                        metadata: message
-                    };
+                    fileBuffers[message.name] = { chunks: [], receivedSize: 0, metadata: message };
                     showFileNotification(`A receber ${message.name}...`, message.name);
+                } else if (message.type === 'chat') {
+                    displayChatMessage(message.content, senderId, false);
                 }
             } catch (e) {
                 const fileInfo = Object.values(fileBuffers).find(f => !f.blob);
                 if (fileInfo) {
                     fileInfo.chunks.push(event.data);
                     fileInfo.receivedSize += event.data.byteLength;
-                    
                     const progress = Math.round((fileInfo.receivedSize / fileInfo.metadata.size) * 100);
                     updateFileProgress(fileInfo.metadata.name, progress);
-
                     if (fileInfo.receivedSize === fileInfo.metadata.size) {
                         const fileBlob = new Blob(fileInfo.chunks);
                         fileInfo.blob = fileBlob;
@@ -172,7 +178,6 @@
             const chunkSize = 16384;
             const reader = new FileReader();
             let offset = 0;
-
             const metadata = { type: 'metadata', name: file.name, size: file.size, fileType: file.type };
             
             for (const peerId in peers) {
@@ -203,6 +208,37 @@
                 reader.readAsArrayBuffer(slice);
             };
             readSlice(0);
+        }
+        
+        function sendChatMessage() {
+            const chatInput = document.getElementById('chat-input');
+            const message = chatInput.value.trim();
+            if (message) {
+                displayChatMessage(message, 'local', true);
+                for (const peerId in peers) {
+                    if (peers[peerId].dataChannel && peers[peerId].dataChannel.readyState === 'open') {
+                        peers[peerId].dataChannel.send(JSON.stringify({ type: 'chat', content: message }));
+                    }
+                }
+                chatInput.value = '';
+            }
+        }
+
+        function displayChatMessage(message, senderId, isLocal) {
+            const chatMessages = document.getElementById('chat-messages');
+            const messageElement = document.createElement('div');
+            messageElement.className = `flex flex-col ${isLocal ? 'items-end' : 'items-start'}`;
+            
+            const senderName = isLocal ? 'Você' : `Remoto ${senderId.substring(0, 6)}`;
+            
+            messageElement.innerHTML = `
+                <span class="text-xs text-gray-400 mb-1">${senderName}</span>
+                <div class="p-2 rounded-lg ${isLocal ? 'bg-blue-600' : 'bg-gray-600'}">
+                    ${message}
+                </div>
+            `;
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight; // Auto-scroll para a última mensagem
         }
 
         function showFileNotification(text, id) {
@@ -248,9 +284,7 @@
         
         function showDownloadLink(fileInfo) {
             const url = URL.createObjectURL(fileInfo.blob);
-            // Adiciona à lista persistente para o modal
             receivedFiles.push({ name: fileInfo.metadata.name, url: url });
-
             const notification = document.getElementById(`file-${fileInfo.metadata.name}`);
             if (notification) {
                 notification.innerHTML = `
@@ -261,8 +295,6 @@
                 hideNotification(notification.id, 15000);
             }
         }
-
-        // --- FIM DA LÓGICA DE PARTILHA DE FICHEIROS ---
 
         function createPeerConnection(targetId) {
             const pc = new RTCPeerConnection(configuration);
@@ -279,12 +311,12 @@
             
             pc.ondatachannel = (event) => {
                 const dataChannel = event.channel;
-                dataChannel.onmessage = handleDataChannelMessage;
+                dataChannel.onmessage = (e) => handleDataChannelMessage(e, targetId);
                 peers[targetId].dataChannel = dataChannel;
             };
 
-            const dataChannel = pc.createDataChannel('fileTransfer');
-            dataChannel.onmessage = handleDataChannelMessage;
+            const dataChannel = pc.createDataChannel('main');
+            dataChannel.onmessage = (e) => handleDataChannelMessage(e, targetId);
             peers[targetId] = pc;
             peers[targetId].dataChannel = dataChannel;
             
@@ -602,10 +634,9 @@
             } 
         }
 
-        // Novo: Função para renderizar a lista de downloads no modal
         function renderDownloadsList() {
             const listContainer = document.getElementById('downloads-list');
-            listContainer.innerHTML = ''; // Limpa a lista atual
+            listContainer.innerHTML = '';
 
             if (receivedFiles.length === 0) {
                 listContainer.innerHTML = '<p class="text-gray-400">Nenhum ficheiro recebido ainda.</p>';
@@ -621,6 +652,11 @@
                 `;
                 listContainer.appendChild(fileItem);
             });
+        }
+
+        function toggleChatPanel() {
+            const chatPanel = document.getElementById('chat-panel');
+            chatPanel.classList.toggle('translate-x-full');
         }
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -640,7 +676,6 @@
                 }
             });
 
-            // Novo: Eventos para o modal de downloads
             const downloadsBtn = document.getElementById('downloads-btn');
             const downloadsModal = document.getElementById('downloads-modal');
             const closeModalBtn = document.getElementById('close-modal-btn');
@@ -657,10 +692,22 @@
             });
 
             downloadsModal.addEventListener('click', (event) => {
-                if (event.target === downloadsModal) { // Fecha apenas se clicar no fundo escuro
+                if (event.target === downloadsModal) { 
                     downloadsModal.classList.add('hidden');
                     downloadsModal.classList.remove('flex');
                 }
+            });
+
+            // Eventos do Chat
+            const chatBtn = document.getElementById('chat-btn');
+            const closeChatBtn = document.getElementById('close-chat-btn');
+            const chatForm = document.getElementById('chat-form');
+
+            chatBtn.addEventListener('click', toggleChatPanel);
+            closeChatBtn.addEventListener('click', toggleChatPanel);
+            chatForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                sendChatMessage();
             });
         });
     </script>
